@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>MoralVerse.AI - AI-Powered Storytelling Platform</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/professional.css">
+  <style>
+    .landing-hero {
+      min-height: 90vh;
+      display: flex;
+      align-items: center;
+      background: var(--bg-gradient);
+      position: relative;
+      overflow: hidden;
+    }
+    .landing-hero::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+      animation: rotate 20s linear infinite;
+    }
+    .feature-card {
+      padding: 2rem;
+      height: 100%;
+      transition: all 0.3s ease;
+    }
+    .feature-card:hover {
+      transform: translateY(-10px);
+    }
+    .cta-section {
+      background: var(--bg-light);
+      padding: 5rem 0;
+    }
+  </style>
+</head>
+<body>
+  <!-- Navbar -->
+  <nav class="navbar navbar-pro navbar-expand-lg sticky-top">
+    <div class="container">
+      <span class="navbar-brand-pro">MoralVerse.AI</span>
+      <div class="navbar-nav ms-auto">
+        <a class="nav-link fw-semibold" href="{% url 'login' %}" style="color: var(--text-dark);">Login</a>
+        <a class="nav-link fw-semibold" href="{% url 'signup' %}" style="color: var(--text-dark);">
+          <span class="btn-pro btn-sm">Sign Up</span>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="landing-hero">
+    <div class="container position-relative">
+      <div class="row align-items-center">
+        <div class="col-lg-6">
+          <h1 class="hero-title-pro mb-4">Create Magical Stories with AI</h1>
+          <p class="hero-subtitle-pro mb-5">
+            Transform ideas into interactive stories with images, audio, and videos. 
+            Perfect for children's moral education and creative storytelling.
+          </p>
+          <div class="d-flex gap-3 flex-wrap">
+            <a href="{% url 'signup' %}" class="btn btn-pro btn-lg">Get Started Free</a>
+            <a href="{% url 'login' %}" class="btn btn-pro-secondary btn-lg">Login</a>
+          </div>
+        </div>
+        <div class="col-lg-6 text-center">
+          <div class="p-5">
+            <div class="feature-icon" style="font-size: 8rem; opacity: 0.3;">📚</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section class="py-5">
+    <div class="container">
+      <div class="text-center mb-5">
+        <h2 class="section-title">Powerful Features</h2>
+        <p class="text-muted">Everything you need to create amazing stories</p>
+      </div>
+      <div class="row g-4">
+        <div class="col-md-4">
+          <div class="card-pro feature-card">
+            <div class="mb-3" style="font-size: 3rem;">🤖</div>
+            <h4 class="mb-3">AI-Powered Generation</h4>
+            <p class="text-muted">Create unique stories using advanced AI models from OpenAI, Gemini, and more.</p>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card-pro feature-card">
+            <div class="mb-3" style="font-size: 3rem;">🎨</div>
+            <h4 class="mb-3">Image Generation</h4>
+            <p class="text-muted">Generate beautiful scene images with avatar integration using DALL-E and FLUX.</p>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card-pro feature-card">
+            <div class="mb-3" style="font-size: 3rem;">🎬</div>
+            <h4 class="mb-3">Video Creation</h4>
+            <p class="text-muted">Assemble complete videos with audio, subtitles, and smooth transitions.</p>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card-pro feature-card">
+            <div class="mb-3" style="font-size: 3rem;">🌍</div>
+            <h4 class="mb-3">Bilingual Support</h4>
+            <p class="text-muted">Automatic Urdu and English subtitle generation for global reach.</p>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card-pro feature-card">
+            <div class="mb-3" style="font-size: 3rem;">🎯</div>
+            <h4 class="mb-3">Interactive Decisions</h4>
+            <p class="text-muted">Create branching stories with decision points that affect the narrative.</p>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card-pro feature-card">
+            <div class="mb-3" style="font-size: 3rem;">📊</div>
+            <h4 class="mb-3">Analytics Dashboard</h4>
+            <p class="text-muted">Track your stories, view statistics, and manage your content.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA Section -->
+  <section class="cta-section">
+    <div class="container text-center">
+      <h2 class="section-title mb-4">Ready to Create Your First Story?</h2>
+      <p class="text-muted mb-5">Join thousands of users creating magical stories with AI</p>
+      <div class="d-flex gap-3 justify-content-center flex-wrap">
+        <a href="{% url 'signup' %}" class="btn btn-pro btn-lg">Sign Up Free</a>
+        <a href="{% url 'admin_login' %}" class="btn btn-pro-secondary btn-lg">Admin Login</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="py-4 border-top">
+    <div class="container text-center">
+      <p class="text-muted mb-0">&copy; 2025 MoralVerse.AI - AI-Powered Storytelling Platform</p>
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <div class="theme-switcher">
+    <button class="theme-toggle-btn" id="theme-toggle-btn" type="button">Theme</button>
+    <div class="theme-panel" id="theme-panel" style="display:none;">
+      <button class="theme-option" data-theme="light" type="button">Light</button>
+      <button class="theme-option" data-theme="dark" type="button">Dark</button>
+      <button class="theme-option" data-theme="ocean" type="button">Ocean</button>
+      <button class="theme-option" data-theme="sunset" type="button">Sunset</button>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const root = document.documentElement;
+      const saved = localStorage.getItem("mv_theme") || "light";
+      const panel = document.getElementById("theme-panel");
+      const toggle = document.getElementById("theme-toggle-btn");
+      const options = document.querySelectorAll(".theme-option");
+
+      function applyTheme(theme) {
+        root.setAttribute("data-theme", theme);
+        localStorage.setItem("mv_theme", theme);
+        options.forEach(btn => btn.classList.toggle("active", btn.dataset.theme === theme));
+      }
+
+      applyTheme(saved);
+      toggle.addEventListener("click", () => {
+        panel.style.display = panel.style.display === "none" ? "block" : "none";
+      });
+      options.forEach(btn => btn.addEventListener("click", () => applyTheme(btn.dataset.theme)));
+      document.addEventListener("click", (e) => {
+        if (!e.target.closest(".theme-switcher")) panel.style.display = "none";
+      });
+    })();
+  </script>
+</body>
+</html>
+

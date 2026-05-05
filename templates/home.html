@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>MoralVerse.AI - Create Magical Stories with AI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="/static/css/professional.css">
+  <style>
+    .form-label { font-weight: 600; color: var(--text-dark); margin-bottom: 0.5rem; font-size: 0.9rem; }
+    .section-title { font-size: 2rem; font-weight: 800; margin-bottom: 2rem; color: var(--text-dark); }
+    .feature-icon { font-size: 3rem; margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+  <!-- Navbar -->
+  <nav class="navbar navbar-pro navbar-expand-lg sticky-top">
+    <div class="container">
+      <span class="navbar-brand-pro d-inline-flex align-items-center gap-2">
+        <i class="bi bi-sparkles"></i>
+        MoralVerse.AI
+      </span>
+      <div class="navbar-nav ms-auto">
+        {% if user.is_authenticated %}
+          <a class="nav-link fw-semibold" href="{% url 'user_dashboard' %}" style="color: var(--text-dark);">My Dashboard</a>
+          <a class="nav-link fw-semibold" href="{% url 'logout' %}" style="color: var(--text-dark);">Logout</a>
+        {% else %}
+          <a class="nav-link fw-semibold" href="{% url 'login' %}" style="color: var(--text-dark);">Login</a>
+          <a class="nav-link fw-semibold" href="{% url 'signup' %}">
+            <span class="btn-pro btn-sm">Sign Up</span>
+          </a>
+        {% endif %}
+        {% if user.is_staff %}
+          <a class="nav-link fw-semibold" href="{% url 'admin_dashboard' %}" style="color: var(--text-dark);">Admin</a>
+        {% endif %}
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="hero-pro">
+    <div class="hero-background"></div>
+    <div class="container hero-content">
+      <div class="row align-items-center">
+        <div class="col-lg-8 mx-auto text-center">
+          <div class="kicker justify-content-center mb-3">
+            <i class="bi bi-stars"></i>
+            <span>AI-Powered Interactive Storytelling</span>
+          </div>
+          <h1 class="hero-title-pro fade-in-up">Create Magical Stories with AI</h1>
+          <p class="hero-subtitle-pro fade-in-up">Transform ideas into interactive stories with images, audio, and videos. Perfect for children's moral education.</p>
+          <div class="d-flex gap-3 justify-content-center flex-wrap fade-in-up">
+            <span class="badge-pro badge-primary">AI-Powered</span>
+            <span class="badge-pro badge-success">Image Generation</span>
+            <span class="badge-pro badge-secondary">Video Creation</span>
+            <span class="badge-pro badge-warning">Bilingual</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Decorative Floating Element -->
+      <div class="d-none d-lg-block position-absolute" style="top: 10%; right: 5%; animation: float 6s ease-in-out infinite; opacity: 0.8; z-index: 2;">
+        <div class="card-pro glass-card" style="width: 240px; background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-color: rgba(255,255,255,0.2);">
+          <div class="d-flex align-items-center gap-3 mb-3">
+            <div style="width: 40px; height: 40px; background: var(--success); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+              <i class="bi bi-check-lg text-white"></i>
+            </div>
+            <div class="text-white small fw-bold">Scene 1 Complete</div>
+          </div>
+          <div style="height: 100px; background: rgba(255,255,255,0.05); border-radius: 12px; border: 1px dashed rgba(255,255,255,0.2);"></div>
+        </div>
+      </div>
+      
+      <div class="d-none d-lg-block position-absolute" style="bottom: 10%; left: 5%; animation: float 8s ease-in-out infinite reverse; opacity: 0.8; z-index: 2;">
+        <div class="card-pro glass-card" style="width: 200px; background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-color: rgba(255,255,255,0.2);">
+          <div class="text-white small mb-2 fw-bold">Voice Synthesis</div>
+          <div class="progress-pro" style="height: 6px; background: rgba(255,255,255,0.1);">
+            <div class="progress-bar-pro" style="width: 75%;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Content -->
+  <main class="container my-5">
+    <div class="row g-4">
+      <!-- Form Section -->
+      <div class="col-lg-5">
+        <div class="card-pro">
+          <div class="d-flex align-items-center mb-4">
+              <h3 class="mb-0 d-flex align-items-center gap-2">
+                <i class="bi bi-pencil-square"></i>
+                Create Your Story
+              </h3>
+          </div>
+          
+          <form method="post" action="{% url 'create_story' %}" enctype="multipart/form-data" id="story-form">
+            {% csrf_token %}
+
+            <div class="mb-4">
+              <label class="form-label">Child's Name</label>
+              <input type="text" name="child_name" class="input-pro" placeholder="Enter child's name" required>
+            </div>
+
+            <div class="mb-4">
+              <label class="form-label">Child's Age</label>
+              <input type="number" name="child_age" class="input-pro" placeholder="Enter child's age (3-12)" min="3" max="12" required>
+            </div>
+
+            <div class="mb-4">
+              <label class="form-label">Moral Theme</label>
+              <input type="text" name="moral_theme" class="input-pro" placeholder="honesty, kindness, courage, respect..." required>
+            </div>
+
+            <div class="mb-4">
+              <label class="form-label">Language</label>
+              <select name="language" class="input-pro" required>
+                <option value="en" selected>English</option>
+                <option value="ur">Urdu</option>
+              </select>
+            </div>
+
+            <div class="mb-4">
+              <label class="form-label">Story Prompt (Optional)</label>
+              <textarea name="prompt" rows="3" class="input-pro" placeholder="Describe your story idea..."></textarea>
+            </div>
+
+            <div class="mb-4">
+              <label class="form-label">AI Model</label>
+              <select name="llm_provider" class="input-pro">
+                <option value="">Auto (from .env)</option>
+                <option value="gemini">Gemini 1.5 Flash</option>
+                <option value="openai">OpenAI GPT-4o Mini</option>
+                <option value="groq">Groq Mixtral</option>
+              </select>
+            </div>
+
+            <div class="mb-4">
+              <label class="form-label">Image Generator</label>
+              <select name="image_provider" class="input-pro">
+                <option value="">Auto (from .env)</option>
+                <option value="local_sd">Local SD Model (Dreamshaper)</option>
+                <option value="gemini">Gemini Imagen</option>
+                <option value="stability">Stability AI</option>
+                <option value="openai">OpenAI DALL-E 3</option>
+              </select>
+            </div>
+
+            <div class="mb-4">
+              <label class="form-label">TTS Provider</label>
+              <select name="tts_provider" class="input-pro">
+                <option value="">Auto (from .env)</option>
+                <option value="gemini">Gemini TTS</option>
+                <option value="openai">OpenAI TTS</option>
+              </select>
+            </div>
+
+            <div class="mb-4">
+              <label class="form-label">Avatar (Optional)</label>
+              
+              <!-- Tabs for Upload/Webcam -->
+              <ul class="nav nav-tabs mb-3" id="avatar-tabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link active" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload-pane" type="button" role="tab">
+                    Upload
+                  </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link" id="webcam-tab" data-bs-toggle="tab" data-bs-target="#webcam-pane" type="button" role="tab">
+                    Webcam
+                  </button>
+                </li>
+              </ul>
+              
+              <div class="tab-content" id="avatar-tab-content">
+                <!-- Upload Tab -->
+                <div class="tab-pane fade show active" id="upload-pane" role="tabpanel">
+                  <input type="file" name="avatar" class="input-pro" accept="image/*" id="avatar-input">
+                  <div id="avatar-preview" class="mt-3" style="display: none;">
+                    <img id="avatar-preview-img" src="" alt="Preview" class="rounded" style="max-width: 150px; border: 3px solid var(--primary); box-shadow: var(--shadow);">
+                    <div class="mt-2">
+                      <div class="form-check mb-2">
+                        <input class="form-check-input upload-ghibli-check" type="checkbox" id="convert-ghibli-upload" checked>
+                        <label class="form-check-label" for="convert-ghibli-upload">Convert to Ghibli Style</label>
+                      </div>
+                      <button type="button" class="btn btn-pro-secondary btn-sm" id="process-upload-btn">Process Avatar</button>
+                      <div id="upload-processing-status" class="mt-2 small text-muted" style="display: none;"></div>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Webcam Tab -->
+                <div class="tab-pane fade" id="webcam-pane" role="tabpanel">
+                  <div class="mb-3">
+                    <video id="webcam-video" autoplay playsinline style="width: 100%; max-width: 400px; border-radius: 12px; display: none;"></video>
+                    <canvas id="webcam-canvas" style="display: none;"></canvas>
+                  </div>
+                  <div class="d-flex gap-2 mb-3">
+                    <button type="button" class="btn btn-pro-secondary btn-sm" id="start-webcam-btn">Start Camera</button>
+                    <button type="button" class="btn btn-pro btn-sm" id="capture-btn" style="display: none;">Capture Photo</button>
+                    <button type="button" class="btn btn-pro-secondary btn-sm" id="stop-webcam-btn" style="display: none;">Stop Camera</button>
+                  </div>
+                  <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="convert-ghibli" checked>
+                    <label class="form-check-label" for="convert-ghibli">
+                      Convert to Ghibli Style
+                    </label>
+                  </div>
+                  <div id="webcam-preview" class="mt-3" style="display: none;">
+                    <img id="webcam-preview-img" src="" alt="Webcam Preview" class="rounded" style="max-width: 150px; border: 3px solid var(--primary); box-shadow: var(--shadow);">
+                    <div class="mt-2">
+                      <button type="button" class="btn btn-pro-secondary btn-sm" id="process-webcam-btn">Process Avatar</button>
+                      <div id="processing-status" class="mt-2 small text-muted" style="display: none;"></div>
+                    </div>
+                  </div>
+                  <input type="hidden" name="webcam_avatar_path" id="webcam-avatar-path">
+                </div>
+              </div>
+            </div>
+
+            <button type="submit" class="btn btn-pro w-100 mb-3" id="generate-btn">
+              Generate Story
+            </button>
+
+            <!-- Generation Progress Tracker (Hidden by default) -->
+            <div id="generation-progress" class="mt-4 p-3 rounded" style="display: none; background: var(--bg-light); border: 1px solid var(--border);">
+              <h6 class="fw-bold mb-3 d-flex align-items-center gap-2">
+                <i class="bi bi-gear-fill spin-slow"></i>
+                Processing Pipeline
+              </h6>
+              <div class="progress-steps small">
+                <div class="d-flex align-items-center gap-2 mb-2 text-muted" id="step-llm">
+                  <i class="bi bi-circle"></i> Drafting the story plot...
+                </div>
+                <div class="d-flex align-items-center gap-2 mb-2 text-muted" id="step-image">
+                  <i class="bi bi-circle"></i> Painting scene illustrations...
+                </div>
+                <div class="d-flex align-items-center gap-2 mb-0 text-muted" id="step-audio">
+                  <i class="bi bi-circle"></i> Narrating moral lessons...
+                </div>
+              </div>
+            </div>
+            
+            <p class="text-center text-muted small mb-0">
+              {% if user.is_authenticated %}
+                Your story will be saved and you can create a video!
+              {% else %}
+                <a href="{% url 'signup' %}" class="text-decoration-none fw-semibold">Sign up</a> to download videos and save your stories.
+              {% endif %}
+            </p>
+          </form>
+        </div>
+      </div>
+
+      <!-- Story Preview Section -->
+      <div class="col-lg-7">
+        <div class="card-pro">
+          <div class="d-flex justify-content-between align-items-center mb-4">
+              <h3 class="mb-0 d-flex align-items-center gap-2">
+                <i class="bi bi-eye"></i>
+                Story Preview
+              </h3>
+            <div class="btn-group">
+              <button type="button" class="btn btn-pro-secondary btn-sm" id="toggle-json-btn">
+                <i class="bi bi-code-slash"></i> JSON
+              </button>
+            </div>
+          </div>
+          
+          <div class="story-content">
+            {% if story_json %}
+            <div id="json-container" style="display: none;">
+              <pre id="story-json" class="story-json-pre text-light" style="max-height: 400px; overflow-y: auto; font-size: 0.85rem; font-family: 'Courier New', monospace;">{{ story_json }}</pre>
+            </div>
+            
+            <div id="preview-display" class="py-2">
+              <div class="alert alert-success d-flex align-items-center gap-3 mb-4">
+                <i class="bi bi-check-circle-fill fs-4"></i>
+                <div>
+                  <strong>Story Generated Successfully!</strong><br>
+                  Review the scenes below and make your first moral choice.
+                </div>
+              </div>
+              
+              <div class="d-grid gap-3 mb-4">
+                <button type="button" class="btn-decision" id="decision-a-btn" disabled>
+                  <span class="choice-letter">A</span>
+                  <span class="choice-text">Option A</span>
+                </button>
+                <button type="button" class="btn-decision" id="decision-b-btn" disabled>
+                  <span class="choice-letter">B</span>
+                  <span class="choice-text">Option B</span>
+                </button>
+              </div>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+              <h4 class="text-muted mb-3">Ready to Create?</h4>
+              <p class="text-muted">
+                Fill in the form and click <strong>"Generate Story"</strong> to create your interactive moral story with AI!
+              </p>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+
+        {% if story and story.scenes %}
+        <div class="card-pro mt-4">
+          <h4 class="mb-4">Scene Images</h4>
+          <div class="row g-3">
+            {% for scene in story.scenes %}
+            <div class="col-md-6">
+              <div class="scene-card-pro">
+                <div class="d-flex justify-content-between mb-2">
+                  <span class="badge-pro badge-primary">Scene {{ scene.id }}</span>
+                  {% if scene.decision %}
+                  <span class="badge-pro badge-secondary">Decision</span>
+                  {% endif %}
+                </div>
+                {% if scene.image_path %}
+                <img src="/media/{{ scene.image_path }}" alt="Scene {{ scene.id }}" class="img-fluid rounded mb-2" style="width: 100%; max-height: 200px; object-fit: cover; box-shadow: var(--shadow);">
+                {% else %}
+                <div class="skeleton rounded mb-2" style="width: 100%; height: 200px;"></div>
+                <div class="text-center py-2 text-muted">
+                  <small>Painting scene {{ scene.id }}...</small>
+                </div>
+                {% endif %}
+
+                {% if scene.audio_path %}
+                <div class="mt-2">
+                  <audio controls class="w-100" style="height: 35px;">
+                    <source src="/media/{{ scene.audio_path }}" type="audio/mpeg">
+                    Your browser does not support the audio element.
+                  </audio>
+                </div>
+                {% endif %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <div class="theme-switcher">
+    <button class="theme-toggle-btn" id="theme-toggle-btn" type="button">Theme</button>
+    <div class="theme-panel" id="theme-panel" style="display:none;">
+      <button class="theme-option" data-theme="light" type="button">Light</button>
+      <button class="theme-option" data-theme="dark" type="button">Dark</button>
+      <button class="theme-option" data-theme="ocean" type="button">Ocean</button>
+      <button class="theme-option" data-theme="sunset" type="button">Sunset</button>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const root = document.documentElement;
+      const saved = localStorage.getItem("mv_theme") || "light";
+      const panel = document.getElementById("theme-panel");
+      const toggle = document.getElementById("theme-toggle-btn");
+      const options = document.querySelectorAll(".theme-option");
+
+      function applyTheme(theme) {
+        root.setAttribute("data-theme", theme);
+        localStorage.setItem("mv_theme", theme);
+        options.forEach(btn => btn.classList.toggle("active", btn.dataset.theme === theme));
+      }
+
+      applyTheme(saved);
+      toggle.addEventListener("click", () => {
+        panel.style.display = panel.style.display === "none" ? "block" : "none";
+      });
+      options.forEach(btn => btn.addEventListener("click", () => applyTheme(btn.dataset.theme)));
+      document.addEventListener("click", (e) => {
+        if (!e.target.closest(".theme-switcher")) panel.style.display = "none";
+      });
+    })();
+
+    let lastUploadedData = null;
+    document.getElementById('avatar-input')?.addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          lastUploadedData = e.target.result;
+          document.getElementById('avatar-preview-img').src = lastUploadedData;
+          document.getElementById('avatar-preview').style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    // Webcam functionality
+    let stream = null;
+    const video = document.getElementById('webcam-video');
+    const canvas = document.getElementById('webcam-canvas');
+    const startBtn = document.getElementById('start-webcam-btn');
+    const captureBtn = document.getElementById('capture-btn');
+    const stopBtn = document.getElementById('stop-webcam-btn');
+    const processBtn = document.getElementById('process-webcam-btn');
+    const processingStatus = document.getElementById('processing-status');
+
+    startBtn?.addEventListener('click', async function() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            width: 640, 
+            height: 480,
+            facingMode: 'user'
+          } 
+        });
+        video.srcObject = stream;
+        video.style.display = 'block';
+        startBtn.style.display = 'none';
+        captureBtn.style.display = 'inline-block';
+        stopBtn.style.display = 'inline-block';
+      } catch (err) {
+        alert('Error accessing webcam: ' + err.message);
+        console.error('Webcam error:', err);
+      }
+    });
+
+    stopBtn?.addEventListener('click', function() {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+      }
+      video.style.display = 'none';
+      startBtn.style.display = 'inline-block';
+      captureBtn.style.display = 'none';
+      stopBtn.style.display = 'none';
+      document.getElementById('webcam-preview').style.display = 'none';
+    });
+
+    let lastCapturedData = null;
+    captureBtn?.addEventListener('click', function() {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0);
+      
+      lastCapturedData = canvas.toDataURL('image/jpeg', 0.9);
+      document.getElementById('webcam-preview-img').src = lastCapturedData;
+      document.getElementById('webcam-preview').style.display = 'block';
+    });
+
+    // Unified Processing Logic
+    async function handleProcessAvatar(imageData, convertGhibli, statusEl, buttonEl) {
+      if (!imageData) {
+        alert('Please select or capture a photo first');
+        return;
+      }
+
+      const childName = document.querySelector('input[name="child_name"]').value || 'user';
+      buttonEl.disabled = true;
+      statusEl.style.display = 'block';
+      statusEl.textContent = convertGhibli ? 'Converting to Ghibli style...' : 'Processing avatar...';
+      statusEl.style.color = 'var(--text-dark)';
+
+      try {
+        const response = await fetch('/api/process-webcam-avatar/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+          },
+          body: JSON.stringify({
+            image_data: imageData,
+            user_identifier: childName,
+            convert_ghibli: convertGhibli
+          })
+        });
+
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(`Server returned ${response.status}: ${text.substring(0, 100)}...`);
+        }
+
+        const data = await response.json();
+
+        if (data.success) {
+          document.getElementById('webcam-avatar-path').value = data.avatar_path;
+          statusEl.textContent = '✓ Avatar processed successfully!';
+          statusEl.style.color = 'var(--success)';
+          
+          // Update preview with processed avatar
+          const processedUrl = `/media/${data.avatar_path}?t=${Date.now()}`;
+          if (buttonEl.id === 'process-upload-btn') {
+            document.getElementById('avatar-preview-img').src = processedUrl;
+          } else {
+            document.getElementById('webcam-preview-img').src = processedUrl;
+          }
+        } else {
+          statusEl.textContent = 'Error: ' + (data.error || 'Processing failed');
+          statusEl.style.color = 'var(--warning)';
+        }
+      } catch (error) {
+        statusEl.textContent = 'Error: ' + error.message;
+        statusEl.style.color = 'var(--warning)';
+      } finally {
+        buttonEl.disabled = false;
+      }
+    }
+
+    // Bind Upload Process Button
+    document.getElementById('process-upload-btn')?.addEventListener('click', function() {
+      handleProcessAvatar(
+        lastUploadedData, 
+        document.getElementById('convert-ghibli-upload').checked,
+        document.getElementById('upload-processing-status'),
+        this
+      );
+    });
+
+    // Bind Webcam Process Button
+    processBtn?.addEventListener('click', function() {
+      handleProcessAvatar(
+        lastCapturedData, 
+        document.getElementById('convert-ghibli').checked,
+        processingStatus,
+        this
+      );
+    });
+
+    // Helper function to get CSRF token
+    function getCookie(name) {
+      let cookieValue = null;
+      if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i].trim();
+          if (cookie.substring(0, name.length + 1) === (name + '=')) {
+            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            break;
+          }
+        }
+      }
+      return cookieValue;
+    }
+
+    // Form submission with progress tracking
+    document.getElementById('story-form')?.addEventListener('submit', function() {
+      const btn = document.getElementById('generate-btn');
+      const progress = document.getElementById('generation-progress');
+      
+      btn.innerHTML = '<span class="spinner-pro" style="width: 20px; height: 20px; border-width: 3px; display: inline-block; margin-right: 10px; vertical-align: middle;"></span> Generating...';
+      btn.disabled = true;
+      
+      progress.style.display = 'block';
+      
+      // Simulate progress steps
+      const steps = [
+        {id: 'step-llm', text: 'Drafting the story plot...'},
+        {id: 'step-image', text: 'Painting scene illustrations...'},
+        {id: 'step-audio', text: 'Narrating moral lessons...'}
+      ];
+      
+      let currentStep = 0;
+      const updateSteps = () => {
+        if (currentStep < steps.length) {
+          const stepEl = document.getElementById(steps[currentStep].id);
+          stepEl.classList.remove('text-muted');
+          stepEl.classList.add('text-primary', 'fw-bold');
+          stepEl.querySelector('i').className = 'bi bi-check-circle-fill';
+          currentStep++;
+          setTimeout(updateSteps, 8000); // Wait 8s between steps for realism
+        }
+      };
+      setTimeout(updateSteps, 1000);
+    });
+
+    // Toggle JSON view
+    document.getElementById('toggle-json-btn')?.addEventListener('click', function() {
+      const jsonContainer = document.getElementById('json-container');
+      const previewDisplay = document.getElementById('preview-display');
+      
+      if (jsonContainer.style.display === 'none') {
+        jsonContainer.style.display = 'block';
+        previewDisplay.style.display = 'none';
+        this.innerHTML = '<i class="bi bi-eye"></i> Preview';
+      } else {
+        jsonContainer.style.display = 'none';
+        previewDisplay.style.display = 'block';
+        this.innerHTML = '<i class="bi bi-code-slash"></i> JSON';
+      }
+    });
+
+    // Decision buttons
+    (function () {
+      const storyJsonEl = document.getElementById("story-json");
+      const btnA = document.getElementById("decision-a-btn");
+      const btnB = document.getElementById("decision-b-btn");
+      
+      if (!storyJsonEl || !btnA || !btnB) return;
+
+      let story = null;
+      const jsonText = storyJsonEl.textContent.trim();
+      
+      if (jsonText) {
+        try {
+          story = JSON.parse(jsonText);
+        } catch (e) {
+          return;
+        }
+      } else {
+        return;
+      }
+
+      const hasDecisions = story.scenes && story.scenes.some(scene => scene.decision);
+      
+      if (hasDecisions) {
+        btnA.disabled = false;
+        btnB.disabled = false;
+      }
+
+      async function sendDecision(option) {
+        if (!story) return;
+        btnA.disabled = true;
+        btnB.disabled = true;
+        
+        try {
+          const resp = await fetch("/api/decision/", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": getCookie("csrftoken"),
+            },
+            body: JSON.stringify({ story, option }),
+          });
+          
+          if (!resp.ok) throw new Error('Request failed');
+          
+          const data = await resp.json();
+          story = data;
+          storyJsonEl.textContent = JSON.stringify(data, null, 2);
+          
+          // Update decision buttons UI
+          const scenesWithDecision = data.scenes.filter(s => s.decision);
+          if (scenesWithDecision.length > 0) {
+              const currentDecision = scenesWithDecision[0].decision;
+              document.querySelector('#decision-a-btn .choice-text').textContent = currentDecision.A;
+              document.querySelector('#decision-b-btn .choice-text').textContent = currentDecision.B;
+          }
+          
+          btnA.disabled = false;
+          btnB.disabled = false;
+        } catch (err) {
+          alert("Failed to apply decision: " + err.message);
+          btnA.disabled = false;
+          btnB.disabled = false;
+        }
+      }
+
+      btnA.addEventListener("click", () => sendDecision("A"));
+      btnB.addEventListener("click", () => sendDecision("B"));
+    })();
+  </script>
+</body>
+</html>
