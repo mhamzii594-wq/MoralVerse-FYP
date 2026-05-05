@@ -8,6 +8,12 @@ from django.contrib.auth.models import User
 from django.contrib import messages
 from django.views.decorators.http import require_http_methods
 from django.http import HttpRequest, HttpResponse
+from django.core.mail import send_mail
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
+from django.conf import settings
+
+from .models import EmailVerification
 
 
 @require_http_methods(["GET", "POST"])
@@ -43,20 +49,82 @@ def signup_view(request: HttpRequest) -> HttpResponse:
             messages.error(request, "Email already in use. Please use another email.")
             return render(request, "auth/signup.html")
         
-        # Create user
+        # Create inactive user and send verification email
         try:
             user = User.objects.create_user(
                 username=username,
                 email=email,
-                password=password
+                password=password,
+                is_active=False  # User cannot login until verified
             )
-            messages.success(request, "Account created successfully! Please login.")
+            
+            # Create verification token
+            verification = EmailVerification.create_verification(user)
+            
+            # Send verification email
+            send_verification_email(user, verification.token)
+            
+            messages.success(request, 
+                "Account created! Please check your email to verify your account before logging in.")
             return redirect("login")
         except Exception as e:
             messages.error(request, f"Error creating account: {str(e)}")
             return render(request, "auth/signup.html")
     
     return render(request, "auth/signup.html")
+
+
+def send_verification_email(user, token):
+    """Send email verification link to user."""
+    verification_url = f"{settings.SITE_URL}/auth/verify/{token}/"
+    
+    context = {
+        'user': user,
+        'verification_url': verification_url,
+        'site_name': 'MoralVerse.AI'
+    }
+    
+    html_message = render_to_string('auth/email_verification.html', context)
+    plain_message = strip_tags(html_message)
+    
+    send_mail(
+        subject='Verify your MoralVerse.AI account',
+        message=plain_message,
+        html_message=html_message,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[user.email],
+        fail_silently=False,
+    )
+
+
+@require_http_methods(["GET"])
+def verify_email_view(request: HttpRequest, token: str) -> HttpResponse:
+    """Handle email verification."""
+    try:
+        verification = EmailVerification.objects.get(token=token)
+        
+        if verification.is_expired():
+            messages.error(request, "Verification link has expired. Please contact support for a new verification email.")
+            return redirect("login")
+        
+        if verification.is_verified:
+            messages.info(request, "Email already verified. You can now login.")
+            return redirect("login")
+        
+        # Verify the email
+        verification.is_verified = True
+        verification.save()
+        
+        user = verification.user
+        user.is_active = True
+        user.save()
+        
+        messages.success(request, "Email verified successfully! You can now login.")
+        return redirect("login")
+        
+    except EmailVerification.DoesNotExist:
+        messages.error(request, "Invalid verification link.")
+        return redirect("login")
 
 
 @require_http_methods(["GET", "POST"])

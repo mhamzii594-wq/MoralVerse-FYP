@@ -6,6 +6,8 @@ from django.db import models
 from django.utils import timezone
 from django.contrib.auth.models import User
 import json
+from datetime import timedelta
+import secrets
 
 
 class StoryRequest(models.Model):
@@ -98,9 +100,40 @@ class StoryScene(models.Model):
     class Meta:
         ordering = ['story_request', 'scene_id']
         unique_together = ['story_request', 'scene_id']
-    
+
+
+class EmailVerification(models.Model):
+    """Email verification tokens for user signup."""
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    token = models.CharField(max_length=100, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    is_verified = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name = 'Email Verification'
+        verbose_name_plural = 'Email Verifications'
+
     def __str__(self):
-        return f"Scene {self.scene_id} of {self.story_request}"
+        return f"Email verification for {self.user.username}"
+
+    def is_expired(self):
+        """Check if verification token has expired."""
+        return timezone.now() > self.expires_at
+
+    def generate_token(self):
+        """Generate secure random token and set expiry."""
+        self.token = secrets.token_urlsafe(32)
+        self.expires_at = timezone.now() + timedelta(hours=24)  # 24 hour expiry
+        self.save()
+
+    @classmethod
+    def create_verification(cls, user):
+        """Create and return a new verification instance."""
+        verification = cls.objects.create(user=user)
+        verification.generate_token()
+        return verification
 
 
 class UserDecision(models.Model):

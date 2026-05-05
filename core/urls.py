@@ -11,6 +11,7 @@ urlpatterns = [
     path("login/", auth_views.login_view, name="login"),
     path("logout/", auth_views.logout_view, name="logout"),
     path("admin-login/", auth_views.admin_login_view, name="admin_login"),
+    path("auth/verify/<str:token>/", auth_views.verify_email_view, name="verify_email"),
     
     # Story Management
     path("api/story/", views.story_api, name="api_story"),
