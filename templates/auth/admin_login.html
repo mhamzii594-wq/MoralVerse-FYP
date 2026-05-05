@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Admin Login - MoralVerse.AI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/professional.css">
+</head>
+<body>
+  <div class="min-vh-100 d-flex align-items-center" style="background: var(--bg-light);">
+    <div class="container">
+      <div class="row justify-content-center">
+        <div class="col-md-5">
+          <div class="card-pro">
+            <div class="text-center mb-4">
+              <h2 class="mb-2">Admin Login</h2>
+              <p class="text-muted">Access the admin dashboard</p>
+            </div>
+
+            {% if messages %}
+              {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                  {{ message }}
+                  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+              {% endfor %}
+            {% endif %}
+
+            <form method="post">
+              {% csrf_token %}
+              
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Username</label>
+                <input type="text" name="username" class="input-pro" placeholder="Admin username" required autofocus>
+              </div>
+
+              <div class="mb-4">
+                <label class="form-label fw-semibold">Password</label>
+                <input type="password" name="password" class="input-pro" placeholder="Admin password" required>
+              </div>
+
+              <button type="submit" class="btn btn-pro w-100 mb-3">Login as Admin</button>
+              
+              <div class="text-center">
+                <p class="text-muted small mb-0">
+                  <a href="{% url 'login' %}" class="text-decoration-none">User Login</a> | 
+                  <a href="{% url 'landing' %}" class="text-decoration-none">Home</a>
+                </p>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <div class="theme-switcher">
+    <button class="theme-toggle-btn" id="theme-toggle-btn" type="button">Theme</button>
+    <div class="theme-panel" id="theme-panel" style="display:none;">
+      <button class="theme-option" data-theme="light" type="button">Light</button>
+      <button class="theme-option" data-theme="dark" type="button">Dark</button>
+      <button class="theme-option" data-theme="ocean" type="button">Ocean</button>
+      <button class="theme-option" data-theme="sunset" type="button">Sunset</button>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const root = document.documentElement;
+      const saved = localStorage.getItem("mv_theme") || "light";
+      const panel = document.getElementById("theme-panel");
+      const toggle = document.getElementById("theme-toggle-btn");
+      const options = document.querySelectorAll(".theme-option");
+
+      function applyTheme(theme) {
+        root.setAttribute("data-theme", theme);
+        localStorage.setItem("mv_theme", theme);
+        options.forEach(btn => btn.classList.toggle("active", btn.dataset.theme === theme));
+      }
+
+      applyTheme(saved);
+      toggle.addEventListener("click", () => {
+        panel.style.display = panel.style.display === "none" ? "block" : "none";
+      });
+      options.forEach(btn => btn.addEventListener("click", () => applyTheme(btn.dataset.theme)));
+      document.addEventListener("click", (e) => {
+        if (!e.target.closest(".theme-switcher")) panel.style.display = "none";
+      });
+    })();
+  </script>
+</body>
+</html>
+

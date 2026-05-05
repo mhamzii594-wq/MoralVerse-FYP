@@ -1,0 +1,5 @@
+"""
+MoralVerse Django project package.
+"""
+
+
