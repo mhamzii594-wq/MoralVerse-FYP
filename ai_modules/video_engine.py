@@ -126,7 +126,9 @@ def assemble_video(
                 logger.warning(f"Failed to load audio {audio_path}: {e}")
                 duration = 5.0
         
-        duration = max(3.0, min(8.0, duration))
+        # No upper cap — let narration finish naturally.
+        # 8-second cap was cutting TTS mid-sentence (10-15s per scene is normal).
+        duration = max(3.0, duration)
         
         # Create image clip with slight padding for movement
         img_clip = ImageClip(str(image_path)).with_duration(duration)
@@ -203,8 +205,24 @@ def assemble_video(
     
     if not clips:
         raise ValueError("No valid clips created")
-    
-    final_video = concatenate_videoclips(clips, method="chain")
+
+    # Crossfade transition between scenes instead of hard cuts.
+    # Each clip (except the first) gets a 0.5s CrossFadeIn; clips overlap by 0.5s via
+    # padding=-0.5 and method="compose" so MoviePy blends the outgoing/incoming frames.
+    _XFADE = 0.5
+    try:
+        if len(clips) > 1:
+            faded = []
+            for _j, _c in enumerate(clips):
+                if _j > 0:
+                    _c = _c.with_effects([vfx.CrossFadeIn(_XFADE)])
+                faded.append(_c)
+            final_video = concatenate_videoclips(faded, padding=-_XFADE, method="compose")
+        else:
+            final_video = concatenate_videoclips(clips, method="chain")
+    except Exception as _xfade_err:
+        logger.warning("CrossFade failed (%s), falling back to chain concat", _xfade_err)
+        final_video = concatenate_videoclips(clips, method="chain")
     
     # Add background music if provided
     if background_music:
@@ -289,6 +307,11 @@ def assemble_video(
 
                         start_sec = _ts_to_sec(start_str)
                         end_sec = _ts_to_sec(end_str)
+                        # Clamp to video duration — a subtitle past the end extends the
+                        # CompositeVideoClip, producing a frozen last frame.
+                        end_sec = min(end_sec, final_video.duration)
+                        if end_sec <= start_sec:
+                            continue
                         sub_duration = max(0.1, end_sec - start_sec)
                         text = ' '.join(lines[2:]).strip()
                         if not text:

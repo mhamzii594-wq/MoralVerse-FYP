@@ -12,7 +12,9 @@
   <link rel="stylesheet" href="/static/css/professional.css">
 </head>
 <body class="page-enter">
-  <nav class="navbar navbar-pro navbar-expand-lg sticky-top">
+  <div class="toast-container" id="toast-container"></div>
+  <canvas id="confetti-canvas" style="display:none;"></canvas>
+  <nav class="navbar navbar-pro navbar-expand-lg sticky-top" id="main-navbar">
     <div class="container">
       <span class="navbar-brand-pro d-inline-flex align-items-center gap-2">
         <i class="bi bi-stars"></i> MoralVerse.AI
@@ -70,8 +72,9 @@
   </div>
 
   <main class="container my-5">
-    <div class="card-pro mb-4">
+    <div class="card-pro mb-4" data-reveal>
       <div class="text-center mb-4">
+        <div style="font-size:3rem;margin-bottom:0.75rem;animation:float 3s ease-in-out infinite;">🎬</div>
         <h2 class="mb-2">{{ story_request.title }}</h2>
         <p class="text-muted-pro">Video is ready for <strong>{{ story_request.child_name }}</strong>! <i class="bi bi-stars text-warning"></i></p>
       </div>
@@ -161,7 +164,7 @@
       <h5 class="mb-4 fw-bold">Scenes in Video</h5>
       <div class="row g-3">
         {% for scene in story_request.scenes.all %}
-        <div class="col-md-3">
+        <div class="col-md-3" data-reveal data-reveal-delay="{{ forloop.counter }}">
           <div class="scene-card-pro p-3">
             <div class="d-flex justify-content-between align-items-center mb-2">
               <strong>Scene {{ scene.scene_id }}</strong>
@@ -209,6 +212,45 @@
       document.addEventListener("click", (e) => {
         if (!e.target.closest(".theme-switcher")) panel.style.display = "none";
       });
+    })();
+
+    // Navbar glass
+    window.addEventListener('scroll', () => {
+      document.getElementById('main-navbar')?.classList.toggle('scrolled', window.scrollY > 60);
+    }, { passive: true });
+
+    // Scroll reveal
+    const _ro = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('is-visible'); _ro.unobserve(e.target); } }), { threshold: 0.1 });
+    document.querySelectorAll('[data-reveal]').forEach(el => _ro.observe(el));
+
+    // Confetti on video ready page
+    (function launchConfetti() {
+      const canvas = document.getElementById('confetti-canvas');
+      if (!canvas) return;
+      canvas.style.display = 'block';
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      const ctx = canvas.getContext('2d');
+      const pieces = Array.from({length: 120}, () => ({
+        x: Math.random() * canvas.width, y: Math.random() * canvas.height - canvas.height,
+        r: Math.random() * 6 + 4, c: `hsl(${Math.random()*360},80%,55%)`,
+        vx: (Math.random() - 0.5) * 2, vy: Math.random() * 3 + 2, rot: Math.random() * 360
+      }));
+      let frame = 0;
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        pieces.forEach(p => {
+          ctx.save(); ctx.fillStyle = p.c;
+          ctx.translate(p.x, p.y); ctx.rotate(p.rot * Math.PI / 180);
+          ctx.fillRect(-p.r/2, -p.r/2, p.r, p.r*1.6);
+          ctx.restore();
+          p.x += p.vx; p.y += p.vy; p.rot += 3;
+          if (p.y > canvas.height) { p.y = -20; p.x = Math.random() * canvas.width; }
+        });
+        if (++frame < 200) requestAnimationFrame(draw);
+        else { canvas.style.display = 'none'; }
+      }
+      requestAnimationFrame(draw);
     })();
 
     // Account menu dropdown

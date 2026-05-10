@@ -12,9 +12,10 @@
   <link rel="stylesheet" href="/static/css/professional.css">
 </head>
 <body class="page-enter">
+  <div class="toast-container" id="toast-container"></div>
 
   <!-- Navbar -->
-  <nav class="navbar navbar-pro navbar-expand-lg sticky-top">
+  <nav class="navbar navbar-pro navbar-expand-lg sticky-top" id="main-navbar">
     <div class="container">
       <a class="navbar-brand-pro d-inline-flex align-items-center gap-2" href="{% url 'home' %}">
         <i class="bi bi-stars"></i>MoralVerse.AI
@@ -78,27 +79,6 @@
         </div>
       </div>
 
-      <!-- Decorative Floating Elements -->
-      <div class="d-none d-lg-block position-absolute" style="top: 10%; right: 5%; animation: float 6s ease-in-out infinite; opacity: 0.8; z-index: 2;">
-        <div class="card-pro glass-card" style="width: 240px; background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-color: rgba(255,255,255,0.2);">
-          <div class="d-flex align-items-center gap-3 mb-3">
-            <div style="width: 40px; height: 40px; background: var(--success); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-              <i class="bi bi-check-lg text-white"></i>
-            </div>
-            <div class="text-white small fw-bold">Scene 1 Complete</div>
-          </div>
-          <div style="height: 100px; background: rgba(255,255,255,0.05); border-radius: 12px; border: 1px dashed rgba(255,255,255,0.2);"></div>
-        </div>
-      </div>
-
-      <div class="d-none d-lg-block position-absolute" style="bottom: 10%; left: 5%; animation: float 8s ease-in-out infinite reverse; opacity: 0.8; z-index: 2;">
-        <div class="card-pro glass-card" style="width: 200px; background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-color: rgba(255,255,255,0.2);">
-          <div class="text-white small mb-2 fw-bold">Voice Synthesis</div>
-          <div class="progress-pro" style="height: 6px; background: rgba(255,255,255,0.1);">
-            <div class="progress-bar-pro" style="width: 75%;"></div>
-          </div>
-        </div>
-      </div>
     </div>
   </section>
 
@@ -234,7 +214,7 @@
                 <!-- Webcam Tab -->
                 <div class="tab-pane fade" id="webcam-pane" role="tabpanel">
                   <div class="mb-3">
-                    <video id="webcam-video" autoplay playsinline style="width: 100%; max-width: 400px; border-radius: 12px; display: none; border: 3px solid var(--primary);"></video>
+                    <video id="webcam-video" autoplay playsinline style="width: 100%; max-width: 400px; border-radius: 12px; display: none; border: 3px solid var(--primary); transform: scaleX(-1);"></video>
                     <canvas id="webcam-canvas" style="display: none;"></canvas>
                   </div>
                   <div class="d-flex gap-2 mb-3 flex-wrap">
@@ -262,6 +242,7 @@
                     </div>
                   </div>
                   <input type="hidden" name="webcam_avatar_path" id="webcam-avatar-path">
+                  <input type="hidden" name="webcam_orig_path" id="webcam-orig-path">
                 </div>
               </div>
             </div>
@@ -270,23 +251,7 @@
               <i class="bi bi-stars me-2"></i>Generate Story
             </button>
 
-            <!-- Generation Progress Tracker -->
-            <div id="generation-progress" class="mt-4 p-3 rounded" style="display: none; background: var(--bg-light); border: 1px solid var(--border);">
-              <h6 class="fw-bold mb-3 d-flex align-items-center gap-2">
-                <i class="bi bi-gear-fill spin-slow"></i>Processing Pipeline
-              </h6>
-              <div class="progress-steps text-small">
-                <div class="d-flex align-items-center gap-2 mb-2 text-muted" id="step-llm">
-                  <i class="bi bi-circle"></i> Drafting the story plot...
-                </div>
-                <div class="d-flex align-items-center gap-2 mb-2 text-muted" id="step-image">
-                  <i class="bi bi-circle"></i> Painting scene illustrations...
-                </div>
-                <div class="d-flex align-items-center gap-2 mb-0 text-muted" id="step-audio">
-                  <i class="bi bi-circle"></i> Narrating moral lessons...
-                </div>
-              </div>
-            </div>
+            <!-- Generation progress (handled by full-screen modal) -->
 
             <p class="text-center text-muted text-small mb-0 mt-2">
               {% if user.is_authenticated %}
@@ -400,6 +365,33 @@
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Generation Modal -->
+  <div id="story-gen-modal" class="gen-modal-overlay hidden">
+    <div class="gen-modal-box">
+      <div class="gen-lottie-wrap">✨</div>
+      <h4 class="fw-bold mb-1 text-center">Creating Your Story</h4>
+      <p class="text-muted text-center text-small mb-4">Please wait — the AI is working its magic…</p>
+      <div>
+        <div class="gen-stage active" id="sg-llm">
+          <div class="gen-stage-icon"><i class="bi bi-pencil-fill"></i></div>
+          <div class="gen-stage-info"><div class="gen-stage-title">Writing Story</div><div class="gen-stage-sub">LLM is drafting your 6-scene story</div></div>
+          <div class="gen-stage-status">In progress…</div>
+        </div>
+        <div class="gen-stage" id="sg-images">
+          <div class="gen-stage-icon"><i class="bi bi-palette-fill"></i></div>
+          <div class="gen-stage-info"><div class="gen-stage-title">Painting Scenes</div><div class="gen-stage-sub">Generating Ghibli artwork for each scene</div></div>
+          <div class="gen-stage-status">Waiting…</div>
+        </div>
+        <div class="gen-stage" id="sg-audio">
+          <div class="gen-stage-icon"><i class="bi bi-volume-up-fill"></i></div>
+          <div class="gen-stage-info"><div class="gen-stage-title">Recording Narration</div><div class="gen-stage-sub">TTS audio for all scenes</div></div>
+          <div class="gen-stage-status">Waiting…</div>
+        </div>
+      </div>
+      <p class="text-muted text-center text-small mt-4 mb-0">You will be redirected to the story preview automatically.</p>
+    </div>
+  </div>
   <div class="theme-switcher">
     <button class="theme-toggle-btn" id="theme-toggle-btn" type="button">
       <i class="bi bi-palette me-1"></i>Theme
@@ -548,6 +540,7 @@
 
         if (data.success) {
           document.getElementById('webcam-avatar-path').value = data.avatar_path;
+          document.getElementById('webcam-orig-path').value = data.orig_path || data.avatar_path;
           statusEl.textContent = '✓ Avatar processed successfully!';
           statusEl.style.color = 'var(--success)';
 
@@ -602,35 +595,48 @@
       return cookieValue;
     }
 
-    // Form submission with progress tracking
+    // Form submission — show generation modal
+    const STAGE_IDS_HOME = ['sg-llm','sg-images','sg-audio'];
     document.getElementById('story-form')?.addEventListener('submit', function() {
       const btn = document.getElementById('generate-btn');
-      const progress = document.getElementById('generation-progress');
-
-      btn.innerHTML = '<span class="spinner-pro" style="width: 20px; height: 20px; border-width: 3px; display: inline-block; margin-right: 10px; vertical-align: middle;"></span> Generating...';
+      btn.innerHTML = '<span class="btn-spinner"></span> Creating…';
       btn.disabled = true;
-
-      progress.style.display = 'block';
-
-      const steps = [
-        {id: 'step-llm', text: 'Drafting the story plot...'},
-        {id: 'step-image', text: 'Painting scene illustrations...'},
-        {id: 'step-audio', text: 'Narrating moral lessons...'}
-      ];
-
-      let currentStep = 0;
-      const updateSteps = () => {
-        if (currentStep < steps.length) {
-          const stepEl = document.getElementById(steps[currentStep].id);
-          stepEl.classList.remove('text-muted');
-          stepEl.classList.add('text-primary', 'fw-bold');
-          stepEl.querySelector('i').className = 'bi bi-check-circle-fill';
-          currentStep++;
-          setTimeout(updateSteps, 8000);
-        }
-      };
-      setTimeout(updateSteps, 1000);
+      // Show full-screen generation modal
+      const modal = document.getElementById('story-gen-modal');
+      if (modal) modal.classList.add('show');
+      // Advance stages visually for feedback
+      let si = 0;
+      function nextStage() {
+        STAGE_IDS_HOME.forEach((id, i) => {
+          const el = document.getElementById(id); if (!el) return;
+          if (i < si) { el.className = 'gen-stage done'; el.querySelector('.gen-stage-status').textContent = '✓ Done'; }
+          else if (i === si) { el.className = 'gen-stage active'; el.querySelector('.gen-stage-status').textContent = 'In progress…'; }
+          else { el.className = 'gen-stage'; }
+        });
+        if (si < STAGE_IDS_HOME.length - 1) { si++; setTimeout(nextStage, 18000); }
+      }
+      setTimeout(nextStage, 12000);
     });
+
+    // Navbar glass on scroll
+    window.addEventListener('scroll', () => {
+      document.getElementById('main-navbar')?.classList.toggle('scrolled', window.scrollY > 60);
+    }, { passive: true });
+
+    // Toast system
+    function showToast(msg, type='info') {
+      const icons = {success:'✅',error:'❌',warning:'⚠️',info:'ℹ️'};
+      const tc = document.getElementById('toast-container');
+      const t = document.createElement('div');
+      t.className = `toast-item toast-${type}`;
+      t.innerHTML = `<span class="toast-icon">${icons[type]||'ℹ️'}</span><span class="toast-body">${msg}</span><button class="toast-close" onclick="this.parentElement.remove()">✕</button>`;
+      tc.appendChild(t);
+      setTimeout(() => { t.classList.add('toast-out'); setTimeout(() => t.remove(), 300); }, 5000);
+    }
+
+    // Scroll reveal
+    const _ro = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('is-visible'); _ro.unobserve(e.target); } }), { threshold: 0.1 });
+    document.querySelectorAll('[data-reveal]').forEach(el => _ro.observe(el));
 
     // Toggle JSON view
     document.getElementById('toggle-json-btn')?.addEventListener('click', function() {

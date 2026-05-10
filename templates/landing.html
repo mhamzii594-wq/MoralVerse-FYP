@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <title>MoralVerse.AI - AI-Powered Storytelling Platform</title>
+  <meta name="description" content="Create personalized AI-powered children's stories with Ghibli art, bilingual narration, and interactive decisions." />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,52 +13,67 @@
   <link rel="stylesheet" href="/static/css/professional.css">
   <style>
     .landing-hero {
-      min-height: 90vh;
+      min-height: 92vh;
       display: flex;
       align-items: center;
       background: var(--bg-gradient);
       position: relative;
       overflow: hidden;
+      padding: 5rem 0;
     }
     .landing-hero::before {
       content: '';
       position: absolute;
       top: -50%; right: -50%;
       width: 200%; height: 200%;
-      background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+      background: radial-gradient(circle, rgba(255,255,255,0.10) 0%, transparent 70%);
       animation: rotate 20s linear infinite;
+    }
+    .landing-hero::after {
+      content: '';
+      position: absolute;
+      bottom: -10%; left: -10%;
+      width: 60%; height: 60%;
+      background: radial-gradient(circle, rgba(255,255,255,0.06) 0%, transparent 70%);
+      pointer-events: none;
     }
     .feature-card { padding: 2rem; height: 100%; }
     .feature-card:hover { transform: translateY(-10px); }
     .feature-icon-wrap {
       width: 64px; height: 64px;
-      border-radius: 16px;
+      border-radius: 18px;
       display: flex; align-items: center; justify-content: center;
       font-size: 1.75rem;
       margin-bottom: 1.25rem;
+      transition: transform 0.3s;
     }
-    .hero-icon-wrap {
-      width: 200px; height: 200px;
-      border-radius: 50%;
-      background: rgba(255,255,255,0.12);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 6rem; color: white;
-      margin: 0 auto;
-      animation: float 4s ease-in-out infinite;
-      border: 2px solid rgba(255,255,255,0.25);
-      backdrop-filter: blur(8px);
+    .card-pro:hover .feature-icon-wrap { transform: scale(1.12) rotate(-5deg); }
+    .cta-section {
+      background: var(--bg-gradient);
+      padding: 6rem 0;
+      position: relative;
+      overflow: hidden;
     }
-    .cta-section { background: var(--bg-light); padding: 5rem 0; }
+    .cta-section::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(circle at 30% 50%, rgba(255,255,255,0.08) 0%, transparent 60%);
+    }
+    .how-it-works { background: var(--bg-white); padding: 5rem 0; }
   </style>
 </head>
 <body class="page-enter">
+  <!-- Toast container -->
+  <div class="toast-container" id="toast-container"></div>
+  <!-- Confetti -->
+  <canvas id="confetti-canvas" style="display:none;"></canvas>
 
   <!-- Navbar -->
-  <nav class="navbar navbar-pro navbar-expand-lg sticky-top">
+  <nav class="navbar navbar-pro navbar-expand-lg sticky-top" id="main-navbar">
     <div class="container">
-      <span class="navbar-brand-pro d-inline-flex align-items-center gap-2">
+      <a class="navbar-brand-pro d-inline-flex align-items-center gap-2" href="{% url 'landing' %}">
         <i class="bi bi-stars"></i> MoralVerse.AI
-      </span>
+      </a>
       <div class="navbar-nav ms-auto gap-1 align-items-center">
         {% if user.is_authenticated %}
           <a class="nav-link" href="{% url 'home' %}"><i class="bi bi-plus-circle me-1"></i>Create Story</a>
@@ -78,9 +94,9 @@
                 </div>
               </div>
               <div class="account-dropdown-nav">
-                <a href="{% url 'home' %}" class="account-dropdown-item"><i class="bi bi-house"></i>Home</a>
+                <a href="{% url 'home' %}" class="account-dropdown-item"><i class="bi bi-plus-circle"></i>Create Story</a>
                 <a href="{% url 'user_dashboard' %}" class="account-dropdown-item"><i class="bi bi-grid"></i>My Stories</a>
-                <a href="{% url 'account_settings' %}" class="account-dropdown-item"><i class="bi bi-gear"></i>Account Settings</a>
+                <a href="{% url 'account_settings' %}" class="account-dropdown-item"><i class="bi bi-gear"></i>Settings</a>
               </div>
               <div class="account-dropdown-divider"></div>
               <div class="account-dropdown-nav">
@@ -89,11 +105,9 @@
             </div>
           </div>
         {% else %}
-          <a class="nav-link" href="{% url 'login' %}">
-            <i class="bi bi-box-arrow-in-right me-1"></i>Login
-          </a>
+          <a class="nav-link" href="{% url 'login' %}"><i class="bi bi-box-arrow-in-right me-1"></i>Login</a>
           <a href="{% url 'signup' %}" class="btn btn-pro btn-pro--sm ms-2">
-            <i class="bi bi-person-plus me-1"></i>Sign Up
+            <i class="bi bi-person-plus me-1"></i>Sign Up Free
           </a>
         {% endif %}
       </div>
@@ -102,120 +116,185 @@
 
   <!-- Hero -->
   <section class="landing-hero">
-    <div class="container position-relative">
-      <div class="row align-items-center">
+    <div class="container position-relative" style="z-index:2;">
+      <div class="row align-items-center g-5">
         <div class="col-lg-6">
-          <div class="kicker mb-4">
+          <div class="kicker mb-4" data-reveal data-reveal-delay="1">
             <i class="bi bi-lightning-charge-fill"></i> AI-Powered Storytelling
           </div>
-          <h1 class="hero-title-pro mb-4">Create Magical Stories with AI</h1>
-          <p class="hero-subtitle-pro mb-5">
-            Transform ideas into interactive stories with images, audio, and videos.
-            Perfect for children's moral education and creative storytelling.
+          <h1 class="hero-title-pro mb-4" data-reveal data-reveal-delay="2">
+            Create Magical Stories<br>for <span class="hero-typewriter" id="hero-typewriter">Your Child</span>
+          </h1>
+          <p class="hero-subtitle-pro mb-5" data-reveal data-reveal-delay="3">
+            Transform a child's photo into a personalized Ghibli-style animated story — with AI-generated art, bilingual narration, and interactive moral choices.
           </p>
-          <div class="d-flex gap-3 flex-wrap">
-            <a href="{% url 'signup' %}" class="btn btn-pro btn-pro--lg">
+          <div class="d-flex gap-3 flex-wrap" data-reveal data-reveal-delay="4">
+            <a href="{% url 'signup' %}" class="btn btn-pro btn-pro--lg" id="hero-cta-btn">
               <i class="bi bi-rocket-takeoff me-2"></i>Get Started Free
             </a>
-            <a href="{% url 'login' %}" class="btn btn-pro btn-pro--secondary btn-pro--lg">
+            <a href="{% url 'login' %}" class="btn btn-pro btn-pro--secondary btn-pro--lg" style="background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.4);color:white;">
               <i class="bi bi-box-arrow-in-right me-2"></i>Login
             </a>
           </div>
-        </div>
-        <div class="col-lg-6 text-center mt-5 mt-lg-0">
-          <div class="hero-icon-wrap">
-            <i class="bi bi-book-half"></i>
+          <div class="d-flex gap-3 mt-4 flex-wrap" data-reveal data-reveal-delay="5">
+            <span class="badge-pro" style="background:rgba(255,255,255,0.15);color:white;border-color:rgba(255,255,255,0.25);"><i class="bi bi-palette-fill me-1"></i>Ghibli Art</span>
+            <span class="badge-pro" style="background:rgba(255,255,255,0.15);color:white;border-color:rgba(255,255,255,0.25);"><i class="bi bi-translate me-1"></i>Urdu & English</span>
+            <span class="badge-pro" style="background:rgba(255,255,255,0.15);color:white;border-color:rgba(255,255,255,0.25);"><i class="bi bi-diagram-3 me-1"></i>Interactive</span>
+            <span class="badge-pro" style="background:rgba(255,255,255,0.15);color:white;border-color:rgba(255,255,255,0.25);"><i class="bi bi-camera-video-fill me-1"></i>Full Video</span>
           </div>
+        </div>
+        <div class="col-lg-6 d-flex justify-content-center align-items-center" data-reveal="right" data-reveal-delay="3">
+          <div class="hero-visual" style="width:320px;height:320px;position:relative;flex-shrink:0;">
+            <div class="orb orb-1"></div>
+            <div class="orb orb-2"></div>
+            <div class="orb orb-3"></div>
+            <div class="hero-center-icon">📖</div>
+            <div class="hero-float-card fc-1" style="top:10px;left:-10px;"><i class="bi bi-check-circle-fill text-success me-1"></i>Story Generated</div>
+            <div class="hero-float-card fc-2" style="top:130px;right:-60px;"><i class="bi bi-palette-fill me-1" style="color:#f472b6;"></i>Scenes Painted</div>
+            <div class="hero-float-card fc-3" style="bottom:10px;left:-10px;"><i class="bi bi-camera-video-fill me-1" style="color:#34d399;"></i>Video Ready!</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stats Strip -->
+  <section class="stats-strip" id="stats-section">
+    <div class="container">
+      <div class="row g-4 text-center">
+        <div class="col-6 col-md-3">
+          <div class="stat-num" data-count="1240">0</div>
+          <div class="stat-label">Stories Created</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-num" data-count="7440">0</div>
+          <div class="stat-label">Scenes Generated</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-num" data-count="890">0</div>
+          <div class="stat-label">Videos Made</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-num" data-count="98">0</div>
+          <div class="stat-label">% Satisfaction</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How It Works -->
+  <section class="how-it-works">
+    <div class="container">
+      <div class="text-center mb-5" data-reveal>
+        <div class="kicker justify-content-center mx-auto mb-3" style="background:var(--info-bg);color:var(--primary);border-color:rgba(99,102,241,0.2);display:inline-flex;">
+          <i class="bi bi-map-fill"></i> Simple Process
+        </div>
+        <h2 class="mb-2">From Idea to Story in 3 Steps</h2>
+        <p class="text-muted-pro">No technical knowledge needed. Just fill a form and watch the magic happen.</p>
+      </div>
+      <div class="row g-0 position-relative">
+        <div class="col-md-4 hiw-step" data-reveal data-reveal-delay="1">
+          <div class="hiw-number">1</div>
+          <div class="hiw-connector d-none d-md-block"><div class="hiw-connector-fill" id="conn-1"></div></div>
+          <h5 class="fw-bold mb-2">Fill the Form</h5>
+          <p class="text-muted-pro text-small">Enter your child's name, age, moral theme, and optionally upload or take a photo.</p>
+        </div>
+        <div class="col-md-4 hiw-step" data-reveal data-reveal-delay="3">
+          <div class="hiw-number">2</div>
+          <div class="hiw-connector d-none d-md-block"><div class="hiw-connector-fill" id="conn-2"></div></div>
+          <h5 class="fw-bold mb-2">AI Creates Everything</h5>
+          <p class="text-muted-pro text-small">Our AI writes a 6-scene story, paints Ghibli art, records narration, and builds interactive choices.</p>
+        </div>
+        <div class="col-md-4 hiw-step" data-reveal data-reveal-delay="5">
+          <div class="hiw-number">3</div>
+          <h5 class="fw-bold mb-2">Watch & Download</h5>
+          <p class="text-muted-pro text-small">Preview scenes, make moral decisions, then generate and download a full MP4 video with subtitles.</p>
         </div>
       </div>
     </div>
   </section>
 
   <!-- Features -->
-  <section class="py-5 fade-in-up">
+  <section class="py-5" style="background:var(--bg-light);">
     <div class="container">
-      <div class="text-center mb-5">
+      <div class="text-center mb-5" data-reveal>
         <h2 class="mb-2">Powerful Features</h2>
-        <p class="text-muted-pro">Everything you need to create amazing stories</p>
+        <p class="text-muted-pro">Everything you need to create amazing, educational stories</p>
       </div>
       <div class="row g-4">
-
-        <div class="col-md-4">
+        <div class="col-md-4" data-reveal data-reveal-delay="1">
           <div class="card-pro feature-card">
             <div class="feature-icon-wrap" style="background:rgba(99,102,241,0.12);color:var(--primary);">
               <i class="bi bi-robot"></i>
             </div>
-            <h4 class="mb-3">AI-Powered Generation</h4>
-            <p class="text-muted-pro">Create unique stories using advanced AI models from Gemini, OpenAI, and more.</p>
+            <h4 class="mb-3">AI Story Generation</h4>
+            <p class="text-muted-pro">Powered by LLaMA 3.1, Gemini 2.0, and GPT-4. Creates unique 6-scene moral stories personalized for your child.</p>
           </div>
         </div>
-
-        <div class="col-md-4">
+        <div class="col-md-4" data-reveal data-reveal-delay="2">
           <div class="card-pro feature-card">
             <div class="feature-icon-wrap" style="background:rgba(236,72,153,0.12);color:var(--secondary);">
               <i class="bi bi-palette-fill"></i>
             </div>
-            <h4 class="mb-3">Image Generation</h4>
-            <p class="text-muted-pro">Generate beautiful scene images with avatar integration using DALL-E and FLUX.</p>
+            <h4 class="mb-3">Ghibli-Style Art</h4>
+            <p class="text-muted-pro">Transform your child's photo into a beautiful Ghibli anime avatar, then use it consistently across all 6 scenes.</p>
           </div>
         </div>
-
-        <div class="col-md-4">
+        <div class="col-md-4" data-reveal data-reveal-delay="3">
           <div class="card-pro feature-card">
             <div class="feature-icon-wrap" style="background:rgba(245,158,11,0.12);color:var(--accent);">
               <i class="bi bi-camera-video-fill"></i>
             </div>
-            <h4 class="mb-3">Video Creation</h4>
-            <p class="text-muted-pro">Assemble complete videos with audio, subtitles, and smooth transitions.</p>
+            <h4 class="mb-3">Full Video Output</h4>
+            <p class="text-muted-pro">Cinematic Ken Burns animations, crossfade transitions, background music, and downloadable MP4 with subtitles.</p>
           </div>
         </div>
-
-        <div class="col-md-4">
+        <div class="col-md-4" data-reveal data-reveal-delay="1">
           <div class="card-pro feature-card">
             <div class="feature-icon-wrap" style="background:rgba(16,185,129,0.12);color:var(--success);">
               <i class="bi bi-translate"></i>
             </div>
             <h4 class="mb-3">Bilingual Support</h4>
-            <p class="text-muted-pro">Automatic Urdu and English subtitle generation for global reach.</p>
+            <p class="text-muted-pro">Automatic Urdu translation with native TTS narration. Full bilingual SRT subtitles burned into the video.</p>
           </div>
         </div>
-
-        <div class="col-md-4">
+        <div class="col-md-4" data-reveal data-reveal-delay="2">
           <div class="card-pro feature-card">
             <div class="feature-icon-wrap" style="background:rgba(59,130,246,0.12);color:var(--info);">
               <i class="bi bi-diagram-3-fill"></i>
             </div>
             <h4 class="mb-3">Interactive Decisions</h4>
-            <p class="text-muted-pro">Create branching stories with decision points that affect the narrative.</p>
+            <p class="text-muted-pro">Branching A/B moral choices at key story moments. Children learn that their decisions shape the outcome.</p>
           </div>
         </div>
-
-        <div class="col-md-4">
+        <div class="col-md-4" data-reveal data-reveal-delay="3">
           <div class="card-pro feature-card">
             <div class="feature-icon-wrap" style="background:rgba(139,92,246,0.12);color:#8b5cf6;">
-              <i class="bi bi-bar-chart-fill"></i>
+              <i class="bi bi-webcam-fill"></i>
             </div>
-            <h4 class="mb-3">Analytics Dashboard</h4>
-            <p class="text-muted-pro">Track your stories, view statistics, and manage your content easily.</p>
+            <h4 class="mb-3">Webcam Avatar</h4>
+            <p class="text-muted-pro">Capture a photo directly in the browser. Our AI instantly converts it to a Ghibli-style character avatar.</p>
           </div>
         </div>
-
       </div>
     </div>
   </section>
 
   <!-- CTA -->
   <section class="cta-section">
-    <div class="container text-center">
-      <h2 class="mb-3">Ready to Create Your First Story?</h2>
-      <p class="text-muted-pro mb-5">Join thousands of users creating magical stories with AI</p>
-      <div class="d-flex gap-3 justify-content-center flex-wrap">
-        <a href="{% url 'signup' %}" class="btn btn-pro btn-pro--lg">
-          <i class="bi bi-person-plus me-2"></i>Sign Up Free
-        </a>
-        <a href="{% url 'admin_login' %}" class="btn btn-pro btn-pro--ghost btn-pro--lg">
-          <i class="bi bi-shield-lock me-2"></i>Admin Login
-        </a>
+    <div class="container text-center position-relative" style="z-index:1;">
+      <div data-reveal>
+        <div style="font-size:3rem;margin-bottom:1rem;animation:float 3s ease-in-out infinite;">✨</div>
+        <h2 class="hero-title-pro mb-3" style="font-size:2.5rem;">Ready to Create Your First Story?</h2>
+        <p class="hero-subtitle-pro mb-5" style="font-size:1.1rem;">Join families creating magical, educational stories with AI</p>
+        <div class="d-flex gap-3 justify-content-center flex-wrap">
+          <a href="{% url 'signup' %}" class="btn btn-pro btn-pro--lg" style="background:white;color:var(--primary);font-weight:800;">
+            <i class="bi bi-person-plus me-2"></i>Sign Up Free
+          </a>
+          <a href="{% url 'admin_login' %}" class="btn btn-pro btn-pro--ghost btn-pro--lg" style="border-color:rgba(255,255,255,0.4);color:white;">
+            <i class="bi bi-shield-lock me-2"></i>Admin Login
+          </a>
+        </div>
       </div>
     </div>
   </section>
@@ -242,32 +321,120 @@
       <button class="theme-option" data-theme="sunset" type="button"><i class="bi bi-sunset me-2"></i>Sunset</button>
     </div>
   </div>
-  <script>
-    (function () {
-      const root = document.documentElement;
-      const saved = localStorage.getItem("mv_theme") || "light";
-      const panel = document.getElementById("theme-panel");
-      const toggle = document.getElementById("theme-toggle-btn");
-      const options = document.querySelectorAll(".theme-option");
-      function applyTheme(t) {
-        root.setAttribute("data-theme", t);
-        localStorage.setItem("mv_theme", t);
-        options.forEach(b => b.classList.toggle("active", b.dataset.theme === t));
-      }
-      applyTheme(saved);
-      toggle.addEventListener("click", () => { panel.style.display = panel.style.display === "none" ? "block" : "none"; });
-      options.forEach(b => b.addEventListener("click", () => applyTheme(b.dataset.theme)));
-      document.addEventListener("click", e => { if (!e.target.closest(".theme-switcher")) panel.style.display = "none"; });
-    })();
 
-    // Account menu dropdown
-    (function () {
-      const btn = document.getElementById("account-avatar-btn");
-      const dd = document.getElementById("account-dropdown");
-      if (!btn || !dd) return;
-      btn.addEventListener("click", e => { e.stopPropagation(); dd.style.display = dd.style.display === "none" ? "block" : "none"; });
-      document.addEventListener("click", () => { if (dd) dd.style.display = "none"; });
-    })();
+  <script>
+  // ── Shared Utilities ─────────────────────────────────────────────────────
+  function getCookie(name) {
+    let v = null;
+    document.cookie.split(';').forEach(c => {
+      c = c.trim();
+      if (c.startsWith(name + '=')) v = decodeURIComponent(c.slice(name.length + 1));
+    });
+    return v;
+  }
+
+  // ── Theme ────────────────────────────────────────────────────────────────
+  (function() {
+    const root = document.documentElement;
+    const panel = document.getElementById('theme-panel');
+    const toggle = document.getElementById('theme-toggle-btn');
+    const opts = document.querySelectorAll('.theme-option');
+    function applyTheme(t) {
+      root.setAttribute('data-theme', t);
+      localStorage.setItem('mv_theme', t);
+      opts.forEach(b => b.classList.toggle('active', b.dataset.theme === t));
+    }
+    applyTheme(localStorage.getItem('mv_theme') || 'light');
+    toggle?.addEventListener('click', e => { e.stopPropagation(); panel.style.display = panel.style.display === 'none' ? 'block' : 'none'; });
+    opts.forEach(b => b.addEventListener('click', () => applyTheme(b.dataset.theme)));
+    document.addEventListener('click', e => { if (!e.target.closest('.theme-switcher')) panel.style.display = 'none'; });
+  })();
+
+  // ── Account Menu ─────────────────────────────────────────────────────────
+  (function() {
+    const btn = document.getElementById('account-avatar-btn');
+    const dd  = document.getElementById('account-dropdown');
+    if (!btn || !dd) return;
+    btn.addEventListener('click', e => { e.stopPropagation(); dd.style.display = dd.style.display === 'none' ? 'block' : 'none'; });
+    document.addEventListener('click', () => { if (dd) dd.style.display = 'none'; });
+  })();
+
+  // ── Navbar Glass on Scroll ───────────────────────────────────────────────
+  const navbar = document.getElementById('main-navbar');
+  window.addEventListener('scroll', () => {
+    navbar?.classList.toggle('scrolled', window.scrollY > 60);
+  }, { passive: true });
+
+  // ── Scroll-Reveal (IntersectionObserver) ─────────────────────────────────
+  const revealObserver = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('is-visible'); revealObserver.unobserve(e.target); } });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('[data-reveal]').forEach(el => revealObserver.observe(el));
+
+  // ── Stat Counter ─────────────────────────────────────────────────────────
+  let statsTriggered = false;
+  function countUp(el, target) {
+    const duration = 1600;
+    const start = performance.now();
+    function step(now) {
+      const pct = Math.min((now - start) / duration, 1);
+      const ease = 1 - Math.pow(1 - pct, 3);
+      el.textContent = Math.round(ease * target).toLocaleString() + (target === 98 ? '%' : '+');
+      if (pct < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+  const statsObserver = new IntersectionObserver(entries => {
+    if (entries[0].isIntersecting && !statsTriggered) {
+      statsTriggered = true;
+      document.querySelectorAll('[data-count]').forEach(el => countUp(el, +el.dataset.count));
+    }
+  }, { threshold: 0.4 });
+  const statsSection = document.getElementById('stats-section');
+  if (statsSection) statsObserver.observe(statsSection);
+
+  // ── How-It-Works connector animation ─────────────────────────────────────
+  const hiwObserver = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        setTimeout(() => { document.getElementById('conn-1')?.classList.add('filled'); }, 400);
+        setTimeout(() => { document.getElementById('conn-2')?.classList.add('filled'); }, 900);
+        hiwObserver.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.3 });
+  document.querySelector('.how-it-works') && hiwObserver.observe(document.querySelector('.how-it-works'));
+
+  // ── Typewriter effect on hero ─────────────────────────────────────────────
+  const typeEl = document.getElementById('hero-typewriter');
+  if (typeEl) {
+    const phrases = ['Your Child', 'Ali', 'Zara', 'Every Child', 'Your Hero'];
+    let pi = 0, ci = 0, deleting = false;
+    function typeTick() {
+      const phrase = phrases[pi % phrases.length];
+      if (!deleting) {
+        typeEl.textContent = phrase.slice(0, ++ci);
+        if (ci === phrase.length) { deleting = true; setTimeout(typeTick, 2200); return; }
+        setTimeout(typeTick, 90);
+      } else {
+        typeEl.textContent = phrase.slice(0, --ci);
+        if (ci === 0) { deleting = false; pi++; setTimeout(typeTick, 400); return; }
+        setTimeout(typeTick, 45);
+      }
+    }
+    setTimeout(typeTick, 1200);
+  }
+
+  // ── Page exit transitions ─────────────────────────────────────────────────
+  document.querySelectorAll('a[href]:not([target]):not([href^="#"])').forEach(link => {
+    link.addEventListener('click', e => {
+      const href = link.getAttribute('href');
+      if (!href || href.startsWith('javascript')) return;
+      e.preventDefault();
+      document.body.classList.add('page-exit');
+      setTimeout(() => { window.location.href = href; }, 280);
+    });
+  });
   </script>
 </body>
 </html>

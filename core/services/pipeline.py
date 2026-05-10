@@ -13,6 +13,8 @@ This module coordinates:
 from __future__ import annotations
 
 import logging
+import random
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from django.conf import settings
@@ -53,17 +55,33 @@ def generate_story_video(user_input_id: int) -> str:
         # Step 1: Generate story JSON (if not already generated)
         if not story_request.story_json or not story_request.story_json.get('scenes'):
             logger.info("Generating story with LLM...")
+
+            # Describe the avatar BEFORE story generation so the LLM gets real traits
+            # (hair texture, eye colour, outfit) instead of the generic fallback anchor.
+            # describe_avatar uses the _orig.jpg (real photo) — vision models read real
+            # photos accurately, not anime drawings.
+            avatar_description = "a friendly child"
+            if story_request.avatar_path:
+                try:
+                    avatar_description = avatar_processor.describe_avatar(
+                        story_request.avatar_path
+                    )
+                    logger.info("Avatar described: %s", avatar_description[:80])
+                except Exception as _desc_err:
+                    logger.warning("describe_avatar failed: %s", _desc_err)
+
             input_data = {
                 "prompt": story_request.prompt,
                 "child_name": story_request.child_name,
                 "child_age": story_request.child_age,
                 "moral_theme": story_request.moral_theme,
                 "avatar_path": story_request.avatar_path,
+                "avatar_description": avatar_description,
                 "llm_provider": story_request.llm_provider,
                 "image_provider": story_request.image_provider,
                 "preferred_language": story_request.preferred_language,
             }
-            
+
             story_json = llm_engine.generate_story(input_data)
             story_request.story_json = story_json
             story_request.title = story_json.get('title', f"Story for {story_request.child_name}")
@@ -92,12 +110,15 @@ def generate_story_video(user_input_id: int) -> str:
         
         # Step 2: Generate images for each scene (with consistency via img2img)
         logger.info("Generating scene images...")
-        scene_images = []
         # Always use the Ghibli avatar as reference for ALL scenes —
         # switching to the first scene image after scene 1 causes character drift.
         avatar_path = story_request.avatar_path if story_request.avatar_path else None
         character_anchor = story_json.get('character_anchor', '')
 
+        # Pre-scan: split scenes into cached vs needs-generation BEFORE launching threads
+        # so we never make an API call for a scene whose image was already saved.
+        scene_images = [None] * len(scenes)
+        image_tasks = []  # (list_index, scene_data, scene_record, resolved_prompt)
         for i, scene_data in enumerate(scenes):
             scene_id = scene_data.get('id', i + 1)
             scene = scene_records.get(scene_id)
@@ -111,35 +132,54 @@ def generate_story_video(user_input_id: int) -> str:
                 )
                 scene_records[scene_id] = scene
 
-            image_prompt = scene_data.get('image_prompt', '')
-            if not image_prompt:
-                image_prompt = f"Children's story illustration: {scene_data.get('text', '')[:100]}"
-
-            # Re-inject character anchor into prompt if missing (safety net)
+            image_prompt = scene_data.get('image_prompt', '') or f"Children's story illustration: {scene_data.get('text', '')[:100]}"
             if character_anchor and character_anchor not in image_prompt:
                 image_prompt = f"{image_prompt}, {character_anchor}"
 
-            # Reuse existing image if already generated (e.g. from preview page)
             if scene.image_path:
-                logger.info(f"Reusing existing image for scene {scene_data.get('id')}: {scene.image_path}")
-                scene_images.append(scene.image_path)
-                continue
+                logger.info(f"Reusing existing image for scene {scene_id}: {scene.image_path}")
+                scene_images[i] = scene.image_path
+            else:
+                image_tasks.append((i, scene_data, scene, image_prompt))
 
-            # Always pass avatar as reference for consistent character appearance
-            image_path = generate_scene_image(
-                image_prompt,
-                avatar_path,   # Same avatar reference for every scene
-                image_provider=story_request.image_provider,
-            )
-            scene.image_path = image_path
-            scene.save()
-            scene_images.append(image_path)
-            logger.info(f"Generated image for scene {scene_data.get('id')}: {image_path}")
+        if image_tasks:
+            _ip = story_request.image_provider
+            _av = avatar_path
+            # Fixed seed shared by all 6 scene calls — ensures consistent character
+            # colour palette and style across scenes generated in the same story.
+            _seed = random.randint(10000, 999999)
+            _anchor = character_anchor
+
+            def _gen_img(task):
+                idx, sd, sc, prompt = task
+                path = generate_scene_image(
+                    prompt, _av, image_provider=_ip,
+                    seed=_seed, character_anchor=_anchor,
+                )
+                # Save immediately so a preview-page refresh sees this scene as done.
+                StoryScene.objects.filter(pk=sc.pk).update(image_path=path)
+                return idx, path, sd.get('id')
+
+            with ThreadPoolExecutor(max_workers=6) as _pool:
+                futures = {_pool.submit(_gen_img, t): t[0] for t in image_tasks}
+                errors = []
+                for fut in as_completed(futures):
+                    try:
+                        idx, path, sid = fut.result()
+                        scene_images[idx] = path
+                        logger.info(f"Generated image for scene {sid}: {path}")
+                    except Exception as e:
+                        errors.append(str(e))
+                        logger.error(f"Image generation failed: {e}")
+                if errors:
+                    raise RuntimeError(f"Image generation failed for {len(errors)} scene(s): {errors[0]}")
+
+        scene_images = [p for p in scene_images if p]
         
         # Step 3: Generate audio for each scene
         logger.info("Generating audio for scenes...")
-        scene_audio = []
-        
+        scene_audio = [None] * len(scenes)
+        audio_tasks = []  # (list_index, scene_data, scene_record, scene_text)
         for i, scene_data in enumerate(scenes):
             scene_id = scene_data.get('id', i + 1)
             scene = scene_records.get(scene_id)
@@ -152,29 +192,40 @@ def generate_story_video(user_input_id: int) -> str:
                     decision=scene_data.get('decision'),
                 )
                 scene_records[scene_id] = scene
-            
-            scene_text = scene_data.get('text', '')
-            if not scene_text:
-                scene_text = f"Scene {scene_data.get('id')}"
 
-            # Reuse existing audio if already generated (e.g. from preview page)
+            scene_text = scene_data.get('text', '') or f"Scene {scene_data.get('id')}"
+
             if scene.audio_path:
-                logger.info(f"Reusing existing audio for scene {scene_data.get('id')}: {scene.audio_path}")
-                scene_audio.append(scene.audio_path)
-                continue
+                logger.info(f"Reusing existing audio for scene {scene_id}: {scene.audio_path}")
+                scene_audio[i] = scene.audio_path
+            else:
+                audio_tasks.append((i, scene_data, scene, scene_text))
 
-            # Generate audio
-            audio_path = generate_audio(
-                scene_text,
-                voice="child_friendly",
-                language=story_request.preferred_language,
-                provider_override=story_request.tts_provider,
-            )
-            scene.audio_path = audio_path
-            scene.save()
-            scene_audio.append(audio_path)
+        if audio_tasks:
+            _lang = story_request.preferred_language
+            _tts = story_request.tts_provider
 
-            logger.info(f"Generated audio for scene {scene_data.get('id')}: {audio_path}")
+            def _gen_aud(task):
+                idx, sd, sc, text = task
+                path = generate_audio(text, voice="child_friendly", language=_lang, provider_override=_tts)
+                StoryScene.objects.filter(pk=sc.pk).update(audio_path=path)
+                return idx, path, sd.get('id')
+
+            with ThreadPoolExecutor(max_workers=6) as _pool:
+                futures = {_pool.submit(_gen_aud, t): t[0] for t in audio_tasks}
+                errors = []
+                for fut in as_completed(futures):
+                    try:
+                        idx, path, sid = fut.result()
+                        scene_audio[idx] = path
+                        logger.info(f"Generated audio for scene {sid}: {path}")
+                    except Exception as e:
+                        errors.append(str(e))
+                        logger.error(f"Audio generation failed: {e}")
+                if errors:
+                    raise RuntimeError(f"Audio generation failed for {len(errors)} scene(s): {errors[0]}")
+
+        scene_audio = [p for p in scene_audio if p]
         
         # Step 4: Generate subtitles (Urdu + English) with perfect sync
         logger.info("Generating subtitles...")

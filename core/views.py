@@ -157,7 +157,12 @@ def create_story_request(request: HttpRequest) -> HttpResponse:
     avatar_path = create_default_avatar(user_identifier=child_name)
     ghibli_avatar_path = None
     if webcam_avatar_path:
-        avatar_path = webcam_avatar_path
+        ghibli_avatar_path = webcam_avatar_path
+        # Use the original photo for describe_avatar — vision models extract real traits
+        # (hair colour, outfit) from photos, not from anime drawings.
+        # Falls back to the ghibli path when the client has not sent the orig field.
+        _webcam_orig = (request.POST.get("webcam_orig_path", "") or "").strip()
+        avatar_path = _webcam_orig or webcam_avatar_path
     elif avatar_file:
         try:
             allowed_types = {"image/jpeg", "image/png"}
@@ -168,14 +173,14 @@ def create_story_request(request: HttpRequest) -> HttpResponse:
                 messages.error(request, "Avatar image is too large (max 5MB).")
                 return redirect("home")
 
-            # Ghibli-style conversion: returned path IS the Ghibli-converted resized image
-            avatar_path = process_avatar(
+            # process_avatar returns (orig_path, ghibli_path):
+            #   orig_path  — original photo → used by describe_avatar for real trait extraction
+            #   ghibli_path — anime-converted image → used for FLUX img2img scene consistency
+            avatar_path, ghibli_avatar_path = process_avatar(
                 avatar_file,
                 user_identifier=child_name,
                 convert_ghibli=True,
             )
-            # Save ghibli path separately — used for scene img2img consistency
-            ghibli_avatar_path = avatar_path
         except Exception as e:
             logger.error(f"Avatar processing failed: {e}")
             messages.error(request, "Failed to process avatar image.")
@@ -245,56 +250,103 @@ def story_preview(request: HttpRequest, story_id: int) -> HttpResponse:
             logger.error(f"Story generation failed: {e}")
             messages.error(request, f"Failed to generate story: {e}")
     
-    # Generate missing image/audio for preview so users can validate API pipeline
-    # without waiting for full video generation.
+    # Generate missing image/audio for preview — all scenes in parallel to cut wait time.
     try:
-        # Extract locked character anchor from story JSON for visual consistency
+        from concurrent.futures import ThreadPoolExecutor
+        from django.utils import timezone
+        from datetime import timedelta
+
         _character_anchor = (story_request.story_json or {}).get('character_anchor', '')
-        # Prefer the Ghibli-converted avatar for img2img scene consistency
         _ref_avatar = story_request.ghibli_avatar_path or story_request.avatar_path
 
-        for scene in story_request.scenes.all().order_by('scene_id'):
-            # Cache Guard: Only generate if file doesn't exist on disk
-            image_exists = False
-            if scene.image_path:
-                full_image_path = Path(settings.MEDIA_ROOT) / scene.image_path
-                # Real images are usually > 50KB. Stubs are ~6KB.
-                if full_image_path.exists() and full_image_path.stat().size > 10000:
-                    image_exists = True
+        # Anti-wastage guard: if another request is already generating media for this story
+        # (e.g. a concurrent page refresh), skip — the in-flight request will save results
+        # to DB shortly. Allow retry after 8 minutes in case of a crash.
+        _fresh = StoryRequest.objects.values('status', 'updated_at').get(pk=story_request.pk)
+        _skip_generation = (
+            _fresh['status'] == 'generating' and
+            _fresh['updated_at'] is not None and
+            (timezone.now() - _fresh['updated_at']) < timedelta(minutes=8)
+        )
 
-            if not image_exists:
-                image_prompt = scene.image_prompt or f"Children's story illustration: {scene.text[:100]}"
-                # Re-inject character anchor if not already present
-                if _character_anchor and _character_anchor not in image_prompt:
-                    image_prompt = f"{image_prompt}, {_character_anchor}"
-                scene.image_path = generate_scene_image(
-                    image_prompt,
-                    _ref_avatar,
-                    image_provider=story_request.image_provider,
-                )
-            
-            # Cache Guard: Only generate audio if file doesn't exist
-            audio_exists = False
-            if scene.audio_path:
-                full_audio_path = Path(settings.MEDIA_ROOT) / scene.audio_path
-                # Real audio is usually > 10KB. Stubs are very small.
-                if full_audio_path.exists() and full_audio_path.stat().size > 5000:
-                    audio_exists = True
+        if not _skip_generation:
+            # Pre-scan ALL scenes before launching any threads so we only bill for what is
+            # genuinely missing right now (not for work another thread just completed).
+            needs_image, needs_audio = [], []
+            for _scene in story_request.scenes.all().order_by('scene_id'):
+                if _scene.image_path:
+                    _ip = Path(settings.MEDIA_ROOT) / _scene.image_path
+                    if not (_ip.exists() and _ip.stat().st_size > 10000):
+                        needs_image.append(_scene)
+                else:
+                    needs_image.append(_scene)
 
-            if not audio_exists:
-                scene.audio_path = generate_audio(
-                    scene.text or f"Scene {scene.scene_id}",
-                    voice="child_friendly",
-                    language=story_request.preferred_language,
-                    provider_override=story_request.tts_provider,
-                )
-            scene.save(update_fields=["image_path", "audio_path"])
+                if _scene.audio_path:
+                    _ap = Path(settings.MEDIA_ROOT) / _scene.audio_path
+                    if not (_ap.exists() and _ap.stat().st_size > 5000):
+                        needs_audio.append(_scene)
+                else:
+                    needs_audio.append(_scene)
+
+            if needs_image or needs_audio:
+                # Mark as generating so a concurrent refresh finds _skip_generation=True.
+                StoryRequest.objects.filter(pk=story_request.pk).update(status='generating')
+
+                _img_provider = story_request.image_provider
+                _tts_provider = story_request.tts_provider
+                _lang = story_request.preferred_language
+                _anchor = _character_anchor
+                _avatar = _ref_avatar
+
+                def _gen_image(scene):
+                    try:
+                        prompt = scene.image_prompt or f"Children's story illustration: {scene.text[:100]}"
+                        if _anchor and _anchor not in prompt:
+                            prompt = f"{prompt}, {_anchor}"
+                        path = generate_scene_image(prompt, _avatar, image_provider=_img_provider, scene_text=scene.text)
+                        # Save immediately so a page refresh sees this scene as done.
+                        StoryScene.objects.filter(pk=scene.pk).update(image_path=path)
+                        logger.info("Preview: scene %s image saved: %s", scene.scene_id, path)
+                    except Exception as _e:
+                        logger.warning("Preview: scene %s image failed: %s", scene.scene_id, _e)
+
+                def _gen_audio(scene):
+                    try:
+                        path = generate_audio(
+                            scene.text or f"Scene {scene.scene_id}",
+                            voice="child_friendly",
+                            language=_lang,
+                            provider_override=_tts_provider,
+                        )
+                        StoryScene.objects.filter(pk=scene.pk).update(audio_path=path)
+                        logger.info("Preview: scene %s audio saved: %s", scene.scene_id, path)
+                    except Exception as _e:
+                        logger.warning("Preview: scene %s audio failed: %s", scene.scene_id, _e)
+
+                with ThreadPoolExecutor(max_workers=6) as _pool:
+                    _futs = (
+                        [_pool.submit(_gen_image, s) for s in needs_image] +
+                        [_pool.submit(_gen_audio, s) for s in needs_audio]
+                    )
+                    for _f in _futs:
+                        try:
+                            _f.result()
+                        except Exception as _e:
+                            logger.warning("Preview generation thread raised: %s", _e)
+
+                # Reset status — video not yet assembled so don't mark completed.
+                # Only reset if we set it (don't overwrite 'completed' from a pipeline run).
+                StoryRequest.objects.filter(pk=story_request.pk, status='generating').update(status='pending')
+
     except Exception as e:
         logger.warning("Scene media generation failed in preview: %s", e)
 
-    # Load scenes from database
-    scenes = story_request.scenes.all().order_by('scene_id')
-    
+
+    # Load scenes from database; annotate each with a JSON-safe decision string
+    scenes = list(story_request.scenes.all().order_by('scene_id'))
+    for _s in scenes:
+        _s.decision_json = json.dumps(_s.decision, ensure_ascii=False) if _s.decision else 'null'
+
     context = {
         "story_request": story_request,
         "story_json": json.dumps(story_request.story_json, indent=2, ensure_ascii=False),
@@ -304,6 +356,7 @@ def story_preview(request: HttpRequest, story_id: int) -> HttpResponse:
     }
     
     return render(request, "story_preview.html", context)
+
 
 
 def generate_video_api(request: HttpRequest, story_id: int) -> JsonResponse:
@@ -448,7 +501,9 @@ def decision_interactive_api(request: HttpRequest, story_id: int) -> JsonRespons
         story_request.save()
         
         # Update scene
-        # Keep DB scene text consistent with the updated story JSON (important for UI reloads).
+        # Sync DB StoryScene records with updated story JSON.
+        # New scenes from regeneration (IDs >= decision_scene_id) need to be created, not just updated.
+        # Pre-decision scenes are left untouched (images/audio already exist).
         try:
             for sc in (updated_story.get("scenes") or []):
                 if not isinstance(sc, dict):
@@ -456,30 +511,36 @@ def decision_interactive_api(request: HttpRequest, story_id: int) -> JsonRespons
                 sc_id = sc.get("id")
                 if not sc_id:
                     continue
-                # Update decision scene and all subsequent scenes.
                 if int(sc_id) >= int(scene.scene_id):
-                    # 1. Get the new image_path from the regenerated JSON
-                    new_image_path = sc.get("image_path")
-                    
-                    # 2. Generate audio for the new text
                     new_audio_path = generate_audio(
                         sc.get("text", "") or f"Scene {sc_id}",
                         voice="child_friendly",
                         language=story_request.preferred_language,
                         provider_override=story_request.tts_provider,
                     )
-                    
-                    # 3. Update the database record
-                    StoryScene.objects.filter(
+                    new_image_path = sc.get("image_path")
+                    db_scene, _created = StoryScene.objects.get_or_create(
                         story_request=story_request,
                         scene_id=sc_id,
-                    ).update(
-                        text=sc.get("text", "") or "",
-                        image_prompt=sc.get("image_prompt", "") or "",
-                        decision=sc.get("decision"),
-                        image_path=new_image_path,
-                        audio_path=new_audio_path,
+                        defaults={
+                            "text": sc.get("text", "") or "",
+                            "image_prompt": sc.get("image_prompt", "") or "",
+                            "decision": sc.get("decision"),
+                            "image_path": new_image_path,
+                            "audio_path": new_audio_path,
+                        },
                     )
+                    if not _created:
+                        db_scene.text = sc.get("text", "") or ""
+                        db_scene.image_prompt = sc.get("image_prompt", "") or ""
+                        db_scene.decision = sc.get("decision")
+                        db_scene.image_path = new_image_path
+                        db_scene.audio_path = new_audio_path
+                        db_scene.save()
+                    # Also persist the audio path back into story_json so the pipeline reuses it.
+                    sc["audio_path"] = new_audio_path
+            story_request.story_json = updated_story
+            story_request.save()
         except Exception:
             pass
 
@@ -621,16 +682,17 @@ def process_webcam_avatar_api(request: HttpRequest) -> JsonResponse:
     logger.debug("Webcam image_data prefix: %s", image_data[:50])
     
     try:
-        avatar_path = process_webcam_avatar(
+        orig_path, ghibli_path = process_webcam_avatar(
             image_data=image_data,
             user_identifier=user_identifier,
-            convert_ghibli=convert_ghibli
+            convert_ghibli=convert_ghibli,
         )
-        
         return JsonResponse({
             "success": True,
-            "avatar_path": avatar_path,
-            "message": "Avatar processed successfully"
+            "avatar_path": ghibli_path,   # backward compat — JS uses this for preview
+            "ghibli_path": ghibli_path,
+            "orig_path": orig_path,        # original photo for describe_avatar
+            "message": "Avatar processed successfully",
         })
     except Exception as e:
         logger.exception(f"Webcam avatar processing failed: {e}")

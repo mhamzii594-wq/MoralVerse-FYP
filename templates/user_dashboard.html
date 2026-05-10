@@ -11,19 +11,19 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <link rel="stylesheet" href="/static/css/professional.css">
   <style>
-    /* Fix: body CSS transform (page-enter animation) breaks Bootstrap modal position:fixed */
     body.modal-open { transform: none !important; }
     #deleteModal { z-index: 9999 !important; }
     .modal-backdrop { z-index: 9998 !important; }
   </style>
 </head>
 <body class="page-enter">
+  <div class="toast-container" id="toast-container"></div>
 
-  <nav class="navbar navbar-pro navbar-expand-lg sticky-top">
+  <nav class="navbar navbar-pro navbar-expand-lg sticky-top" id="main-navbar">
     <div class="container">
-      <span class="navbar-brand-pro d-inline-flex align-items-center gap-2">
+      <a class="navbar-brand-pro d-inline-flex align-items-center gap-2" href="{% url 'home' %}">
         <i class="bi bi-stars"></i> MoralVerse.AI
-      </span>
+      </a>
       <div class="navbar-nav ms-auto gap-1 align-items-center">
         <a class="nav-link" href="{% url 'home' %}"><i class="bi bi-plus-circle me-1"></i>Create Story</a>
         <a class="nav-link active" href="{% url 'user_dashboard' %}" aria-current="page"><i class="bi bi-grid me-1"></i>Dashboard</a>
@@ -31,7 +31,7 @@
           <a class="nav-link" href="{% url 'admin_dashboard' %}"><i class="bi bi-shield me-1"></i>Admin</a>
         {% endif %}
         <div class="account-menu">
-          <button class="account-avatar-btn" id="account-avatar-btn" type="button" title="{{ user.username }}">
+          <button class="account-avatar-btn" id="account-avatar-btn" type="button">
             <div class="account-avatar">{{ user.username|slice:":2"|upper }}</div>
           </button>
           <div class="account-dropdown" id="account-dropdown" style="display:none;">
@@ -45,7 +45,7 @@
             <div class="account-dropdown-nav">
               <a href="{% url 'home' %}" class="account-dropdown-item"><i class="bi bi-house"></i>Home</a>
               <a href="{% url 'user_dashboard' %}" class="account-dropdown-item"><i class="bi bi-grid"></i>My Stories</a>
-              <a href="{% url 'account_settings' %}" class="account-dropdown-item"><i class="bi bi-gear"></i>Account Settings</a>
+              <a href="{% url 'account_settings' %}" class="account-dropdown-item"><i class="bi bi-gear"></i>Settings</a>
             </div>
             <div class="account-dropdown-divider"></div>
             <div class="account-dropdown-nav">
@@ -58,139 +58,131 @@
   </nav>
 
   <main class="container my-5">
-    <div class="d-flex justify-content-between align-items-center mb-5 flex-wrap gap-3">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-5 flex-wrap gap-3" data-reveal>
       <div>
         <h1 class="mb-1">My Dashboard</h1>
-        <p class="text-muted-pro mb-0">Welcome back, <strong>{{ user.username }}</strong>!</p>
+        <p class="text-muted-pro mb-0">Welcome back, <strong>{{ user.username }}</strong>! ✨</p>
       </div>
       <a href="{% url 'home' %}" class="btn btn-pro">
         <i class="bi bi-plus-lg me-2"></i>Create New Story
       </a>
     </div>
 
-    <!-- Stats -->
+    <!-- Animated Stats -->
     <div class="row g-4 mb-5">
       <div class="col-md-4">
         <div class="stat-card">
-          <div class="mb-2" style="font-size:2rem;color:var(--primary);"><i class="bi bi-collection-fill"></i></div>
-          <div class="stat-number">{{ total_stories }}</div>
+          <div class="mb-3" style="font-size:2.2rem;color:var(--primary);"><i class="bi bi-collection-fill"></i></div>
+          <div class="stat-number" data-count="{{ total_stories }}">{{ total_stories }}</div>
           <p class="text-muted-pro mb-0 fw-semibold">Total Stories</p>
         </div>
       </div>
       <div class="col-md-4">
         <div class="stat-card">
-          <div class="mb-2" style="font-size:2rem;color:var(--success);"><i class="bi bi-check-circle-fill"></i></div>
-          <div class="stat-number" style="color:var(--success);">{{ completed_stories }}</div>
+          <div class="mb-3" style="font-size:2.2rem;color:var(--success);"><i class="bi bi-check-circle-fill"></i></div>
+          <div class="stat-number" data-count="{{ completed_stories }}" style="color:var(--success);">{{ completed_stories }}</div>
           <p class="text-muted-pro mb-0 fw-semibold">Completed</p>
         </div>
       </div>
       <div class="col-md-4">
         <div class="stat-card">
-          <div class="mb-2" style="font-size:2rem;color:var(--secondary);"><i class="bi bi-play-circle-fill"></i></div>
-          <div class="stat-number" style="color:var(--secondary);">{{ videos_count }}</div>
+          <div class="mb-3" style="font-size:2.2rem;color:var(--secondary);"><i class="bi bi-play-circle-fill"></i></div>
+          <div class="stat-number" data-count="{{ videos_count }}" style="color:var(--secondary);">{{ videos_count }}</div>
           <p class="text-muted-pro mb-0 fw-semibold">Videos Created</p>
         </div>
       </div>
     </div>
 
-    <!-- Stories List -->
-    <div class="card-pro">
-      <h5 class="mb-4 fw-bold"><i class="bi bi-journals me-2"></i>My Stories</h5>
-
+    <!-- Stories -->
+    <div class="d-flex justify-content-between align-items-center mb-4" data-reveal>
+      <h4 class="mb-0 fw-bold"><i class="bi bi-journals me-2" style="color:var(--primary);"></i>My Stories</h4>
       {% if stories %}
-      <div class="table-responsive">
-        <table class="table table-pro">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Title</th>
-              <th>Child</th>
-              <th>Theme</th>
-              <th>Status</th>
-              <th>Created</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for story in stories %}
-            <tr>
-              <td class="fw-semibold text-muted-pro">#{{ story.id }}</td>
-              <td class="fw-semibold">{{ story.title|default:"Untitled" }}</td>
-              <td>{{ story.child_name }}</td>
-              <td><span class="badge-pro badge-primary">{{ story.moral_theme }}</span></td>
-              <td>
-                <span class="badge-pro
-                  {% if story.status == 'completed' %}badge-success
-                  {% elif story.status == 'generating' %}badge-warning
-                  {% elif story.status == 'failed' %}badge-danger
-                  {% else %}badge-secondary{% endif %}">
-                  {{ story.get_status_display }}
-                </span>
-              </td>
-              <td class="text-muted-pro text-small">{{ story.created_at|date:"M d, Y" }}</td>
-              <td>
-                <div class="d-flex gap-2 flex-wrap">
-                  <a href="{% url 'story_preview' story.id %}" class="btn btn-pro btn-pro--secondary btn-pro--sm">
-                    <i class="bi bi-eye me-1"></i>View
-                  </a>
-                  {% if story.video_path %}
-                    <a href="{% url 'video_ready' story.id %}" class="btn btn-pro btn-pro--sm">
-                      <i class="bi bi-play-fill me-1"></i>Video
-                    </a>
-                  {% endif %}
-                  <button class="btn btn-pro btn-pro--outline-danger btn-pro--sm"
-                          onclick="confirmDelete({{ story.id }}, '{{ story.title|default:'Untitled'|escapejs }}')">
-                    <i class="bi bi-trash3"></i>
-                  </button>
-                </div>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-
-      {% else %}
-      <!-- Empty State -->
-      <div class="text-center py-5">
-        <div class="mb-4" style="font-size:4rem;color:var(--border);line-height:1;">
-          <i class="bi bi-journal-x"></i>
-        </div>
-        <h4 class="mb-2">No stories yet</h4>
-        <p class="text-muted-pro mb-4">Create your first story and it will appear here.</p>
-        <a href="{% url 'home' %}" class="btn btn-pro">
-          <i class="bi bi-plus-lg me-2"></i>Create Your First Story
-        </a>
-      </div>
+        <span class="badge-pro badge-primary">{{ stories|length }} stor{{ stories|length|pluralize:"y,ies" }}</span>
       {% endif %}
-
     </div>
+
+    {% if stories %}
+    <div class="story-grid" id="story-grid">
+      {% for story in stories %}
+      <div class="story-dash-card" data-reveal data-reveal-delay="{{ forloop.counter|add:0 }}">
+        {% if story.scenes.first.image_path %}
+          <div style="width:100%;height:160px;overflow:hidden;flex-shrink:0;">
+            <img src="/media/{{ story.scenes.first.image_path }}" alt="{{ story.title }}" class="story-dash-thumb" style="width:100%;height:100%;object-fit:cover;display:block;">
+          </div>
+        {% else %}
+          <div class="story-dash-thumb-placeholder">📖</div>
+        {% endif %}
+        <div class="story-dash-body">
+          <div class="story-dash-title">{{ story.title|default:"Untitled Story" }}</div>
+          <div class="story-dash-meta">
+            For <strong>{{ story.child_name }}</strong> &bull; {{ story.created_at|date:"M d, Y" }}
+          </div>
+          <div class="mb-3">
+            <span class="badge-pro badge-primary me-1">{{ story.moral_theme }}</span>
+            <span class="badge-pro {% if story.status == 'completed' %}badge-success{% elif story.status == 'generating' %}badge-warning generating-pulse{% elif story.status == 'failed' %}badge-danger{% else %}badge-secondary{% endif %}">
+              {% if story.status == 'generating' %}<span class="pulse-dot" style="width:7px;height:7px;margin-right:5px;display:inline-block;"></span>{% endif %}
+              {{ story.get_status_display }}
+            </span>
+          </div>
+          <div class="story-dash-footer">
+            <div class="d-flex gap-2 flex-wrap">
+              <a href="{% url 'story_preview' story.id %}" class="btn btn-pro btn-pro--secondary btn-pro--sm">
+                <i class="bi bi-eye me-1"></i>View
+              </a>
+              {% if story.video_path %}
+                <a href="{% url 'video_ready' story.id %}" class="btn btn-pro btn-pro--sm">
+                  <i class="bi bi-play-fill me-1"></i>Video
+                </a>
+              {% endif %}
+            </div>
+            <button class="btn btn-pro btn-pro--outline-danger btn-pro--sm"
+                    onclick="confirmDelete({{ story.id }}, '{{ story.title|default:'Untitled'|escapejs }}')">
+              <i class="bi bi-trash3"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% else %}
+    <!-- Empty State -->
+    <div class="card-pro text-center py-5" data-reveal>
+      <div style="font-size:4.5rem;margin-bottom:1.5rem;animation:float 4s ease-in-out infinite;">📚</div>
+      <h3 class="mb-2">No stories yet</h3>
+      <p class="text-muted-pro mb-4">Create your first AI-powered story and it will appear here.</p>
+      <a href="{% url 'home' %}" class="btn btn-pro btn-pro--lg">
+        <i class="bi bi-stars me-2"></i>Create Your First Story
+      </a>
+    </div>
+    {% endif %}
   </main>
 
-  <!-- Delete confirmation modal -->
+  <!-- Delete Modal -->
   <div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content" style="background:var(--bg-white);border:1px solid var(--border);border-radius:16px;">
-        <div class="modal-header border-0 pb-0">
+      <div class="modal-content" style="background:var(--bg-white);border:1px solid var(--border);border-radius:20px;overflow:hidden;">
+        <div class="modal-header border-0 pb-0 pt-4 px-4">
           <h5 class="modal-title fw-bold">
             <i class="bi bi-exclamation-triangle text-warning me-2"></i>Delete Story
           </h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
-        <div class="modal-body" style="color:var(--text-dark);">
-          Are you sure you want to delete <strong id="deleteStoryTitle"></strong>? This cannot be undone.
+        <div class="modal-body px-4 py-3" style="color:var(--text-dark);">
+          Are you sure you want to delete <strong id="deleteStoryTitle"></strong>?
+          <p class="text-muted small mt-2 mb-0">This will permanently remove the story and all generated media files.</p>
         </div>
-        <div class="modal-footer border-0 pt-0">
-          <button type="button" class="btn btn-pro btn-pro--secondary" data-bs-dismiss="modal">Cancel</button>
+        <div class="modal-footer border-0 px-4 pb-4 pt-0">
+          <button type="button" class="btn btn-pro btn-pro--ghost" data-bs-dismiss="modal">Cancel</button>
           <button type="button" class="btn btn-pro btn-pro--danger" id="confirmDeleteBtn">
-            <i class="bi bi-trash3 me-1"></i>Delete
+            <i class="bi bi-trash3 me-1"></i>Delete Story
           </button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Theme Switcher -->
   <div class="theme-switcher">
     <button class="theme-toggle-btn" id="theme-toggle-btn" type="button">
       <i class="bi bi-palette me-1"></i>Theme
@@ -203,131 +195,115 @@
     </div>
   </div>
 
-  <!-- Bootstrap JS (must be before our scripts so bootstrap.Modal is available) -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-
   <script>
-    // ── Remove page-enter transform so position:fixed modals work correctly ──
-    document.addEventListener('animationend', function(e) {
-      if (e.animationName === 'pageEnter') {
-        document.body.classList.remove('page-enter');
-      }
-    }, { once: true });
+  // Remove page-enter transform so modals work
+  document.addEventListener('animationend', e => {
+    if (e.animationName === 'pageEnter') document.body.classList.remove('page-enter');
+  }, { once: true });
 
-    // ── Delete modal state ────────────────────────────────────────────────────
-    let deleteModal = null;
-    let pendingDeleteId = null;
-
-    function confirmDelete(storyId, storyTitle) {
-      pendingDeleteId = storyId;
-      const titleEl = document.getElementById('deleteStoryTitle');
-      if (titleEl) titleEl.textContent = storyTitle;
-      if (!deleteModal) {
-        const modalEl = document.getElementById('deleteModal');
-        if (modalEl) deleteModal = new bootstrap.Modal(modalEl);
-      }
-      if (deleteModal) deleteModal.show();
-    }
-
-    // ── CSRF cookie helper ────────────────────────────────────────────────────
-    function getCookie(name) {
-      let cookieValue = null;
-      if (document.cookie && document.cookie !== '') {
-        const cookies = document.cookie.split(';');
-        for (let i = 0; i < cookies.length; i++) {
-          const cookie = cookies[i].trim();
-          if (cookie.substring(0, name.length + 1) === (name + '=')) {
-            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-            break;
-          }
-        }
-      }
-      return cookieValue;
-    }
-
-    document.addEventListener('DOMContentLoaded', function () {
-
-      // ── Confirm delete button ───────────────────────────────────────────────
-      const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
-      if (confirmDeleteBtn) {
-        confirmDeleteBtn.addEventListener('click', function () {
-          if (!pendingDeleteId) return;
-          const btn = this;
-          const originalHTML = btn.innerHTML;
-          btn.disabled = true;
-          btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Deleting&hellip;';
-
-          fetch('/story/' + pendingDeleteId + '/delete/', {
-            method: 'POST',
-            headers: {
-              'X-CSRFToken': getCookie('csrftoken'),
-              'Content-Type': 'application/json'
-            }
-          })
-          .then(function (r) {
-            if (!r.ok) throw new Error('Server returned ' + r.status);
-            return r.json();
-          })
-          .then(function (data) {
-            if (data.success) {
-              location.reload();
-            } else {
-              throw new Error(data.error || 'Delete failed');
-            }
-          })
-          .catch(function (err) {
-            console.error('Delete error:', err);
-            alert('Failed to delete story: ' + err.message);
-            btn.disabled = false;
-            btn.innerHTML = originalHTML;
-            if (deleteModal) deleteModal.hide();
-          });
-        });
-      }
-
-      // ── Account menu dropdown ───────────────────────────────────────────────
-      const avatarBtn = document.getElementById('account-avatar-btn');
-      const dropdown  = document.getElementById('account-dropdown');
-      if (avatarBtn && dropdown) {
-        avatarBtn.addEventListener('click', function (e) {
-          e.stopPropagation();
-          dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
-        });
-        document.addEventListener('click', function () {
-          if (dropdown) dropdown.style.display = 'none';
-        });
-      }
-
-      // ── Theme switcher ──────────────────────────────────────────────────────
-      const root         = document.documentElement;
-      const themePanel   = document.getElementById('theme-panel');
-      const themeToggle  = document.getElementById('theme-toggle-btn');
-      const themeOptions = document.querySelectorAll('.theme-option');
-
-      function applyTheme(t) {
-        root.setAttribute('data-theme', t);
-        localStorage.setItem('mv_theme', t);
-        themeOptions.forEach(function (b) {
-          b.classList.toggle('active', b.dataset.theme === t);
-        });
-      }
-
-      if (themeToggle && themePanel) {
-        applyTheme(localStorage.getItem('mv_theme') || 'light');
-        themeToggle.addEventListener('click', function (e) {
-          e.stopPropagation();
-          themePanel.style.display = themePanel.style.display === 'none' ? 'block' : 'none';
-        });
-        themeOptions.forEach(function (b) {
-          b.addEventListener('click', function () { applyTheme(b.dataset.theme); });
-        });
-        document.addEventListener('click', function (e) {
-          if (!e.target.closest('.theme-switcher')) themePanel.style.display = 'none';
-        });
-      }
-
+  function getCookie(name) {
+    let v = null;
+    document.cookie.split(';').forEach(c => {
+      c = c.trim();
+      if (c.startsWith(name + '=')) v = decodeURIComponent(c.slice(name.length + 1));
     });
-  </script>
+    return v;
+  }
 
+  // Toast system
+  function showToast(msg, type = 'info') {
+    const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+    const tc = document.getElementById('toast-container');
+    const t = document.createElement('div');
+    t.className = `toast-item toast-${type}`;
+    t.innerHTML = `<span class="toast-icon">${icons[type]||'ℹ️'}</span><span class="toast-body">${msg}</span><button class="toast-close" onclick="this.parentElement.remove()">✕</button>`;
+    tc.appendChild(t);
+    setTimeout(() => { t.classList.add('toast-out'); setTimeout(() => t.remove(), 300); }, 4500);
+  }
+
+  // Theme
+  (function() {
+    const root = document.documentElement;
+    const panel = document.getElementById('theme-panel');
+    const toggle = document.getElementById('theme-toggle-btn');
+    const opts = document.querySelectorAll('.theme-option');
+    function applyTheme(t) { root.setAttribute('data-theme', t); localStorage.setItem('mv_theme', t); opts.forEach(b => b.classList.toggle('active', b.dataset.theme === t)); }
+    applyTheme(localStorage.getItem('mv_theme') || 'light');
+    toggle?.addEventListener('click', e => { e.stopPropagation(); panel.style.display = panel.style.display === 'none' ? 'block' : 'none'; });
+    opts.forEach(b => b.addEventListener('click', () => applyTheme(b.dataset.theme)));
+    document.addEventListener('click', e => { if (!e.target.closest('.theme-switcher')) panel.style.display = 'none'; });
+  })();
+
+  // Account menu
+  (function() {
+    const btn = document.getElementById('account-avatar-btn');
+    const dd = document.getElementById('account-dropdown');
+    if (!btn || !dd) return;
+    btn.addEventListener('click', e => { e.stopPropagation(); dd.style.display = dd.style.display === 'none' ? 'block' : 'none'; });
+    document.addEventListener('click', () => { if (dd) dd.style.display = 'none'; });
+  })();
+
+  // Navbar glass
+  window.addEventListener('scroll', () => {
+    document.getElementById('main-navbar')?.classList.toggle('scrolled', window.scrollY > 60);
+  }, { passive: true });
+
+  // Scroll reveal
+  const ro = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('is-visible'); ro.unobserve(e.target); } }), { threshold: 0.1 });
+  document.querySelectorAll('[data-reveal]').forEach(el => ro.observe(el));
+
+  // Stat counter
+  function countUp(el, target) {
+    const dur = 1400, start = performance.now();
+    function step(now) {
+      const p = Math.min((now - start) / dur, 1);
+      const e = 1 - Math.pow(1 - p, 3);
+      el.textContent = Math.round(e * target);
+      if (p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+  const so = new IntersectionObserver(es => {
+    if (es[0].isIntersecting) { document.querySelectorAll('[data-count]').forEach(el => countUp(el, +el.dataset.count)); so.disconnect(); }
+  }, { threshold: 0.3 });
+  const firstStat = document.querySelector('[data-count]');
+  if (firstStat) so.observe(firstStat.closest('.row') || firstStat);
+
+  // Delete
+  let deleteModal = null, pendingDeleteId = null;
+  function confirmDelete(id, title) {
+    pendingDeleteId = id;
+    document.getElementById('deleteStoryTitle').textContent = title;
+    if (!deleteModal) deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+    deleteModal.show();
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('confirmDeleteBtn')?.addEventListener('click', function() {
+      if (!pendingDeleteId) return;
+      const btn = this;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Deleting…';
+      fetch('/story/' + pendingDeleteId + '/delete/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCookie('csrftoken'), 'Content-Type': 'application/json' }
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          showToast('Story deleted successfully.', 'success');
+          deleteModal.hide();
+          setTimeout(() => location.reload(), 800);
+        } else throw new Error(data.error || 'Delete failed');
+      })
+      .catch(err => {
+        showToast('Failed to delete: ' + err.message, 'error');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-trash3 me-1"></i>Delete Story';
+      });
+    });
+  });
+  </script>
 </body>
 </html>
