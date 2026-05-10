@@ -41,9 +41,9 @@ def _clean_json(content: str) -> str:
     return content.strip()
 
 def _get_provider(override: str | None = None) -> str:
-    if override and override.lower() in {"openai", "gemini", "groq", "stub"}:
+    if override and override.lower() in {"openai", "gemini", "groq", "modelslab", "stub"}:
         return override.lower()
-    return (os.getenv("LLM_PROVIDER") or "gemini").lower()
+    return (os.getenv("LLM_PROVIDER") or "modelslab").lower()
 
 
 # ---------------------------------------------------------------------------
@@ -52,6 +52,29 @@ def _get_provider(override: str | None = None) -> str:
 
 def _call_llm(provider: str, system: str, user: str) -> str:
     """Call the given provider and return raw text content."""
+    if provider == "modelslab":
+        # ModelsLab v7 LLM API is OpenAI-compatible — use OpenAI SDK with custom base_url
+        from openai import OpenAI as _OAI
+        api_key = os.getenv("MODELSLAB_API_KEY", "").strip()
+        if not api_key:
+            raise RuntimeError("MODELSLAB_API_KEY not set")
+        model_id = os.getenv("MODELSLAB_LLM_MODEL", "meta-llama/Llama-3.1-70B-Instruct")
+        client = _OAI(api_key=api_key, base_url="https://modelslab.com/api/v7/llm")
+        resp = client.chat.completions.create(
+            model=model_id,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            max_tokens=2048,
+            temperature=0.7,
+            top_p=0.9,
+        )
+        result = (resp.choices[0].message.content or "").strip()
+        if not result:
+            raise RuntimeError("ModelsLab LLM returned empty output")
+        return result
+
     if provider == "openai":
         client = _openai_client()
         resp = client.chat.completions.create(

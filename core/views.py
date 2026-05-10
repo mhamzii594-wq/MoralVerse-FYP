@@ -10,7 +10,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import get_user_model
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from django.views.decorators.http import require_POST
 
 from ai_modules.decision_engine import apply_decision
@@ -87,12 +87,12 @@ def create_story_request(request: HttpRequest) -> HttpResponse:
     image_provider = ((request.POST.get("image_provider") or "").strip() or (os.getenv("IMAGE_PROVIDER") or "gemini")).lower()
     tts_provider = ((request.POST.get("tts_provider") or "").strip() or (os.getenv("TTS_PROVIDER") or "gemini")).lower()
 
-    if llm_provider not in {"openai", "gemini", "groq", "stub"}:
-        llm_provider = (os.getenv("LLM_PROVIDER") or "gemini").lower()
-    if image_provider not in {"openai", "gemini", "replicate", "local_sd", "stability", "flux", "stub"}:
-        image_provider = (os.getenv("IMAGE_PROVIDER") or "gemini").lower()
-    if tts_provider not in {"gemini", "openai", "elevenlabs", "coqui", "stub"}:
-        tts_provider = (os.getenv("TTS_PROVIDER") or "gemini").lower()
+    if llm_provider not in {"openai", "gemini", "groq", "modelslab", "stub"}:
+        llm_provider = (os.getenv("LLM_PROVIDER") or "modelslab").lower()
+    if image_provider not in {"openai", "gemini", "replicate", "local_sd", "stability", "flux", "modelslab", "modelslab_ghibli", "pollinations", "stub"}:
+        image_provider = (os.getenv("IMAGE_PROVIDER") or "modelslab").lower()
+    if tts_provider not in {"gemini", "openai", "elevenlabs", "coqui", "modelslab", "stub"}:
+        tts_provider = (os.getenv("TTS_PROVIDER") or "modelslab").lower()
 
     webcam_avatar_path = (request.POST.get("webcam_avatar_path", "") or "").strip()
     avatar_file = request.FILES.get("avatar")
@@ -155,6 +155,7 @@ def create_story_request(request: HttpRequest) -> HttpResponse:
     from ai_modules.avatar_processor import create_default_avatar, process_avatar
 
     avatar_path = create_default_avatar(user_identifier=child_name)
+    ghibli_avatar_path = None
     if webcam_avatar_path:
         avatar_path = webcam_avatar_path
     elif avatar_file:
@@ -167,13 +168,14 @@ def create_story_request(request: HttpRequest) -> HttpResponse:
                 messages.error(request, "Avatar image is too large (max 5MB).")
                 return redirect("home")
 
-            # Always attempt Ghibli-style conversion with fallbacks (local API, Stability, etc.)
-            convert_ghibli = True
+            # Ghibli-style conversion: returned path IS the Ghibli-converted resized image
             avatar_path = process_avatar(
                 avatar_file,
                 user_identifier=child_name,
-                convert_ghibli=convert_ghibli,
+                convert_ghibli=True,
             )
+            # Save ghibli path separately — used for scene img2img consistency
+            ghibli_avatar_path = avatar_path
         except Exception as e:
             logger.error(f"Avatar processing failed: {e}")
             messages.error(request, "Failed to process avatar image.")
@@ -186,6 +188,7 @@ def create_story_request(request: HttpRequest) -> HttpResponse:
         moral_theme=moral_theme,
         prompt=user_prompt,
         avatar_path=avatar_path,
+        ghibli_avatar_path=ghibli_avatar_path,
         llm_provider=llm_provider,
         image_provider=image_provider,
         tts_provider=tts_provider,
@@ -245,6 +248,11 @@ def story_preview(request: HttpRequest, story_id: int) -> HttpResponse:
     # Generate missing image/audio for preview so users can validate API pipeline
     # without waiting for full video generation.
     try:
+        # Extract locked character anchor from story JSON for visual consistency
+        _character_anchor = (story_request.story_json or {}).get('character_anchor', '')
+        # Prefer the Ghibli-converted avatar for img2img scene consistency
+        _ref_avatar = story_request.ghibli_avatar_path or story_request.avatar_path
+
         for scene in story_request.scenes.all().order_by('scene_id'):
             # Cache Guard: Only generate if file doesn't exist on disk
             image_exists = False
@@ -256,9 +264,12 @@ def story_preview(request: HttpRequest, story_id: int) -> HttpResponse:
 
             if not image_exists:
                 image_prompt = scene.image_prompt or f"Children's story illustration: {scene.text[:100]}"
+                # Re-inject character anchor if not already present
+                if _character_anchor and _character_anchor not in image_prompt:
+                    image_prompt = f"{image_prompt}, {_character_anchor}"
                 scene.image_path = generate_scene_image(
                     image_prompt,
-                    story_request.avatar_path if story_request.avatar_path else None,
+                    _ref_avatar,
                     image_provider=story_request.image_provider,
                 )
             
@@ -296,27 +307,41 @@ def story_preview(request: HttpRequest, story_id: int) -> HttpResponse:
 
 
 def generate_video_api(request: HttpRequest, story_id: int) -> JsonResponse:
-    """API endpoint to trigger video generation for a story."""
+    """API endpoint to trigger video generation or poll its current status."""
     if request.method != "POST":
         return JsonResponse({"error": "Only POST allowed"}, status=405)
-    
+
     story_request = get_object_or_404(StoryRequest, id=story_id)
-    
+
+    # ── Poll mode: just return current status, no side effects ──────────────
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+
+    if payload.get("poll"):
+        if story_request.status == 'completed' and story_request.video_path:
+            return JsonResponse({"status": "completed", "video_path": story_request.video_path})
+        if story_request.status == 'failed':
+            return JsonResponse({"status": "failed", "error": story_request.error_message})
+        return JsonResponse({"status": story_request.status})
+
+    # ── Trigger mode ─────────────────────────────────────────────────────────
     if story_request.status == 'generating':
-        return JsonResponse({"status": "generating", "message": "Video generation in progress"})
-    
-    if story_request.video_path:
+        return JsonResponse({"status": "generating", "message": "Video generation already in progress"})
+
+    if story_request.status == 'completed' and story_request.video_path:
         return JsonResponse({
             "status": "completed",
             "video_path": story_request.video_path,
             "message": "Video already generated"
         })
-    
+
     try:
-        # Start video generation (synchronous for now, can be made async)
         story_request.status = 'generating'
+        story_request.error_message = ''
         story_request.save()
-        
+
         # Try async if Django-Q is available
         try:
             from django_q.tasks import async_task
@@ -326,7 +351,7 @@ def generate_video_api(request: HttpRequest, story_id: int) -> JsonResponse:
                 "message": "Video generation started in background"
             })
         except ImportError:
-            # Fallback to synchronous
+            # Synchronous fallback (blocks until done)
             video_path = generate_story_video(story_id)
             return JsonResponse({
                 "status": "completed",
@@ -336,10 +361,7 @@ def generate_video_api(request: HttpRequest, story_id: int) -> JsonResponse:
     except Exception as e:
         logger.exception(f"Video generation failed: {e}")
         story_request.mark_failed(str(e))
-        return JsonResponse({
-            "status": "failed",
-            "error": str(e)
-        }, status=500)
+        return JsonResponse({"status": "failed", "error": str(e)}, status=500)
 
 
 @login_required
@@ -509,6 +531,7 @@ def admin_dashboard(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+@ensure_csrf_cookie
 def user_dashboard(request: HttpRequest) -> HttpResponse:
     """User dashboard showing their stories."""
     user_stories = StoryRequest.objects.filter(user=request.user).order_by('-created_at')
@@ -524,12 +547,45 @@ def user_dashboard(request: HttpRequest) -> HttpResponse:
     return render(request, "user_dashboard.html", context)
 
 
-@login_required
 @require_POST
 def delete_story(request: HttpRequest, story_id: int) -> JsonResponse:
-    """Delete a story owned by the current user."""
+    """Delete a story owned by the current user, including all media files."""
+    # Manual auth check so AJAX gets JSON 403 instead of a 302 redirect
+    if not request.user.is_authenticated:
+        return JsonResponse({"success": False, "error": "Login required"}, status=403)
+
     story = get_object_or_404(StoryRequest, id=story_id, user=request.user)
+
+    # --- Clean up all media files from disk ---
+    media_root = Path(settings.MEDIA_ROOT)
+    files_to_delete: list[Path] = []
+
+    # Video & subtitle files
+    if story.video_path:
+        files_to_delete.append(media_root / story.video_path)
+    if story.subtitle_path:
+        files_to_delete.append(media_root / story.subtitle_path)
+    # Avatar file
+    if story.avatar_path:
+        files_to_delete.append(media_root / story.avatar_path)
+
+    # Scene images & audio
+    for scene in story.scenes.all():
+        if scene.image_path:
+            files_to_delete.append(media_root / scene.image_path)
+        if scene.audio_path:
+            files_to_delete.append(media_root / scene.audio_path)
+
+    for fpath in files_to_delete:
+        try:
+            if fpath.exists() and fpath.is_file():
+                fpath.unlink()
+                logger.info("Deleted media file: %s", fpath)
+        except Exception as exc:
+            logger.warning("Could not delete %s: %s", fpath, exc)
+
     story.delete()
+    logger.info("Deleted story %s for user %s", story_id, request.user.username)
     return JsonResponse({"success": True})
 
 

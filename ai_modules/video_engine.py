@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 _known_magick_paths = [
     r"E:\ImageMagick-7.1.2-Q16-HDRI\magick.exe",
     r"C:\Program Files\ImageMagick-7.1.2-Q16-HDRI\magick.exe",
+    "/usr/bin/magick",
+    "/usr/bin/convert",
+    "/usr/local/bin/magick",
 ]
 magick_path = next((p for p in _known_magick_paths if os.path.exists(p)), None)
 if not magick_path:
@@ -260,33 +263,48 @@ def assemble_video(
                 subtitle_clips = []
                 with open(srt_path, 'r', encoding='utf-8') as f:
                     srt_content = f.read()
-                
-                # Simple SRT parser
-                import re
-                pattern = r'(\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n(.*?)(?=\n\d+\n|\Z)'
-                matches = re.findall(pattern, srt_content, re.DOTALL)
-                
-                for match in matches:
-                    try:
-                        start_str = match[1].replace(',', '.')
-                        end_str = match[2].replace(',', '.')
-                        text = match[3].strip()
 
-                        start_parts = start_str.split(':')
-                        end_parts = end_str.split(':')
-                        start_sec = float(start_parts[0]) * 3600 + float(start_parts[1]) * 60 + float(start_parts[2])
-                        end_sec = float(end_parts[0]) * 3600 + float(end_parts[1]) * 60 + float(end_parts[2])
+                # Normalize line endings (Windows \r\n → \n, old Mac \r → \n)
+                srt_content = srt_content.replace('\r\n', '\n').replace('\r', '\n')
+
+                # Block-based SRT parser: split on blank lines (robust, no regex fragility)
+                import re
+                blocks = re.split(r'\n{2,}', srt_content.strip())
+                for block in blocks:
+                    try:
+                        lines = block.strip().split('\n')
+                        if len(lines) < 3:
+                            continue
+                        # lines[0] = index number, lines[1] = timestamps, lines[2+] = text
+                        ts_line = lines[1]
+                        if '-->' not in ts_line:
+                            continue
+                        start_str, end_str = ts_line.split('-->')
+                        start_str = start_str.strip().replace(',', '.')
+                        end_str = end_str.strip().replace(',', '.')
+
+                        def _ts_to_sec(ts):
+                            parts = ts.split(':')
+                            return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+
+                        start_sec = _ts_to_sec(start_str)
+                        end_sec = _ts_to_sec(end_str)
                         sub_duration = max(0.1, end_sec - start_sec)
+                        text = ' '.join(lines[2:]).strip()
+                        if not text:
+                            continue
 
                         txt_clip = make_textclip(text)
                         txt_clip = txt_clip.with_start(start_sec).with_duration(sub_duration).with_position(('center', 'bottom'))
                         subtitle_clips.append(txt_clip)
                     except Exception as sub_err:
                         logger.warning(f"Skipping malformed subtitle entry: {sub_err}")
-                
+
                 if subtitle_clips:
-                    # Composite subtitles onto video
+                    logger.info(f"Compositing {len(subtitle_clips)} subtitle clip(s) onto video")
                     final_video = CompositeVideoClip([final_video] + subtitle_clips)
+                else:
+                    logger.warning("SRT parsed but produced 0 subtitle clips — check SRT file format")
             except Exception as e:
                 logger.warning(f"Failed to add subtitles: {e}")
     

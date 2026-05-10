@@ -30,8 +30,8 @@ def convert_to_ghibli_style(image_path: Path) -> Path:
     Convert an image to Ghibli-style using AI.
 
     Priority:
-    1. Modelslab FLUX Kontext Dev img2img — passes photo directly, superior character retention
-    2. Gemini Image Generation (gemini-2.0-flash-preview-image-generation) — img2img fallback
+    1. Gemini Vision (describe person) → ModelsLab ghibli model (text2img)
+    2. Gemini Image Generation (gemini-2.0-flash-preview-image-generation) — img2img
     3. Gemini Vision (describe) + Pollinations.AI FLUX (generate) — free text fallback
     4. Return original unchanged
     """
@@ -46,34 +46,59 @@ def convert_to_ghibli_style(image_path: Path) -> Path:
     stem = Path(image_path).stem
     ext = ".jpg"
 
-    ghibli_prompt = (
-        "Studio Ghibli anime portrait, same face same hair same facial features as the person in the photo, "
-        "Hayao Miyazaki hand-drawn illustration style, large expressive eyes, soft warm lighting, "
-        "clean thick outlines, vibrant saturated colors, gentle smile, pure white background, "
-        "masterpiece quality anime art, no text, no watermark"
-    )
     neg_prompt = (
         "photorealistic, realistic photograph, 3d render, CGI, blurry, low quality, "
         "bad anatomy, western cartoon, extra limbs, distorted face, ugly, deformed"
     )
 
-    # --- Path 1: Modelslab FLUX Kontext Dev img2img ---
-    if os.getenv("MODELSLAB_API_KEY"):
+    def _describe_person_with_gemini() -> str:
+        """Use Gemini Vision to get a comma-separated trait description of the person."""
+        try:
+            from google import genai as _g
+            from google.genai import types as _gt
+            _client = _g.Client(api_key=os.getenv("GEMINI_API_KEY"))
+            with open(full_image_path, "rb") as _f:
+                _img_bytes = _f.read()
+            resp = _client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=[
+                    _gt.Part.from_bytes(data=_img_bytes, mime_type="image/jpeg"),
+                    "Describe this person's appearance for a Ghibli anime illustration. "
+                    "Output ONLY a comma-separated trait list, max 30 words. "
+                    "Include: gender, approximate age, hair color and style, eye color, skin tone. "
+                    "Example: 'boy, 8 years old, short black bowl-cut hair, dark brown eyes, light skin'. "
+                    "Do NOT write sentences — only the comma-separated list.",
+                ],
+            )
+            if resp.text:
+                desc = resp.text.strip().rstrip(".")
+                logger.info("Ghibli: person described as: %s", desc[:80])
+                return desc
+        except Exception as _e:
+            logger.warning("Gemini Vision description failed: %s", _e)
+        return "a friendly child with big expressive eyes"
+
+    # --- Path 1: Gemini Vision → ModelsLab ghibli text2img ---
+    if os.getenv("GEMINI_API_KEY") and os.getenv("MODELSLAB_API_KEY"):
         try:
             import requests as _req
 
+            char_desc = _describe_person_with_gemini()
             api_key = os.getenv("MODELSLAB_API_KEY", "").strip()
-            with open(full_image_path, "rb") as _f:
-                img_b64 = base64.b64encode(_f.read()).decode("utf-8")
+
+            ghibli_prompt = (
+                f"Studio Ghibli anime portrait of {char_desc}, "
+                "Hayao Miyazaki hand-drawn illustration style, large expressive eyes, "
+                "soft warm lighting, clean thick outlines, vibrant saturated colors, "
+                "gentle smile, pure white background, masterpiece quality anime art, "
+                "no text, no watermark"
+            )
 
             payload = {
                 "key": api_key,
-                "model_id": "flux-kontext-dev",
+                "model_id": "ghibli",
                 "prompt": ghibli_prompt,
                 "negative_prompt": neg_prompt,
-                "init_image": img_b64,
-                "strength": 0.65,
-                "base64": True,
                 "width": "512",
                 "height": "512",
                 "samples": "1",
@@ -83,24 +108,25 @@ def convert_to_ghibli_style(image_path: Path) -> Path:
                 "enhance_prompt": "yes",
             }
 
-            logger.info("Ghibli: calling Modelslab FLUX Kontext Dev img2img...")
+            logger.info("Ghibli: calling ModelsLab ghibli model (text2img)...")
             resp = _req.post(
-                "https://modelslab.com/api/v6/images/img2img",
+                "https://modelslab.com/api/v6/images/text2img",
                 json=payload,
                 timeout=90,
             )
             resp.raise_for_status()
             data = resp.json()
+            logger.info("Ghibli ModelsLab response status: %s", data.get("status"))
 
             image_url = None
             if data.get("status") == "success":
                 image_url = (data.get("output") or [None])[0]
             elif data.get("status") == "processing":
                 prediction_id = data.get("id")
-                eta = int(data.get("eta", 15))
-                logger.info("Ghibli Kontext: processing (eta=%ss)...", eta)
-                time.sleep(min(eta, 15))
-                for _ in range(12):
+                eta = int(data.get("eta", 20))
+                logger.info("Ghibli ModelsLab: processing (eta=%ss)...", eta)
+                time.sleep(min(eta, 25))
+                for _ in range(15):
                     fetch = _req.post(
                         "https://modelslab.com/api/v6/images/fetch",
                         json={"key": api_key, "request_id": prediction_id},
@@ -111,22 +137,27 @@ def convert_to_ghibli_style(image_path: Path) -> Path:
                         image_url = (fdata.get("output") or [None])[0]
                         break
                     if fdata.get("status") == "error":
-                        raise RuntimeError(f"Kontext poll error: {fdata.get('message')}")
+                        raise RuntimeError(f"ModelsLab ghibli poll error: {fdata.get('message')}")
                     time.sleep(5)
             elif data.get("status") == "error":
-                raise RuntimeError(f"Modelslab error: {data.get('message', data)}")
+                raise RuntimeError(f"ModelsLab ghibli error: {data.get('message', data)}")
 
             if image_url:
                 img_resp = _req.get(image_url, timeout=60)
                 if img_resp.status_code == 200 and len(img_resp.content) > 5000:
-                    out_rel = Path("avatars") / f"{stem}_ghibli_kontext{ext}"
+                    try:
+                        _test = Image.open(BytesIO(img_resp.content))
+                        _test.verify()
+                    except Exception as _ve:
+                        raise RuntimeError(f"ModelsLab ghibli download not a valid image: {_ve}")
+                    out_rel = Path("avatars") / f"{stem}_ghibli_ml{ext}"
                     out_abs = Path(settings.MEDIA_ROOT) / out_rel
                     out_abs.write_bytes(img_resp.content)
-                    logger.info("Ghibli via Modelslab Kontext: %s", out_rel)
+                    logger.info("Ghibli via ModelsLab ghibli model: %s", out_rel)
                     return out_rel
-            raise RuntimeError("Kontext returned no valid image")
+            raise RuntimeError(f"ModelsLab ghibli returned no valid image. Response: {data}")
         except Exception as e:
-            logger.warning("Ghibli Modelslab Kontext failed: %s. Trying Pollinations fallback.", e)
+            logger.warning("Ghibli ModelsLab ghibli model failed: %s. Trying Gemini img2img.", e)
 
     # --- Path 2: Gemini Image Generation (img2img via gemini-2.0-flash-preview-image-generation) ---
     if os.getenv("GEMINI_API_KEY"):
@@ -174,31 +205,11 @@ def convert_to_ghibli_style(image_path: Path) -> Path:
 
     # --- Path 3: Gemini Vision (describe) + Pollinations.AI FLUX (generate) ---
     try:
-        logger.info("Ghibli: describing child with Gemini Vision...")
+        logger.info("Ghibli: trying Pollinations fallback...")
         char_desc = "a friendly child"
 
         if os.getenv("GEMINI_API_KEY"):
-            from google import genai
-            from google.genai import types as _gtypes
-            _client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-            with open(full_image_path, "rb") as _f:
-                _img_bytes = _f.read()
-            desc_resp = _client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=[
-                    _gtypes.Part.from_bytes(data=_img_bytes, mime_type="image/jpeg"),
-                    "Describe this child for a Ghibli anime illustration. "
-                    "Output ONLY a comma-separated trait list, max 25 words. "
-                    "Include: gender, approximate age, hair color and style, eye color, "
-                    "shirt color and type, pants/skirt color. "
-                    "Example: 'boy, 8 years old, short black bowl-cut hair, dark brown eyes, "
-                    "yellow striped t-shirt, blue jeans'. "
-                    "Do NOT write sentences — only the comma-separated list.",
-                ],
-            )
-            if desc_resp.text:
-                char_desc = desc_resp.text.strip().rstrip(".")
-                logger.info("Ghibli: child described as: %s", char_desc[:80])
+            char_desc = _describe_person_with_gemini()
 
         poll_prompt = (
             f"Studio Ghibli anime style close-up portrait of {char_desc}, "
@@ -333,25 +344,35 @@ def process_avatar(uploaded_file: Any, user_identifier: str | None = None, conve
         # Any error in OpenCV flow -> fall back to original image
         pass
     
+    # Keep a copy of the current PIL image before Ghibli conversion
+    # so we can fall back to it if the converted file is unreadable.
+    original_img = img.copy()
+
     # Convert to Ghibli style if requested
     if convert_ghibli:
         try:
             ghibli_path = convert_to_ghibli_style(initial_path)
             if ghibli_path != initial_path:
-                # Use Ghibli version
                 initial_path = ghibli_path
                 logger.info(f"Using Ghibli-style avatar: {ghibli_path}")
         except Exception as e:
             logger.warning(f"Ghibli conversion failed, using original: {e}")
-    
+
     # Resize to 256x256
-    # Ensure initial_path is absolute for opening
     if not Path(initial_path).is_absolute():
         load_path = Path(settings.MEDIA_ROOT) / initial_path
     else:
-        load_path = initial_path
-        
-    img = Image.open(load_path)
+        load_path = Path(initial_path)
+
+    try:
+        img = Image.open(load_path).convert("RGB")
+    except Exception as e:
+        logger.warning(
+            "Could not open processed avatar at %s (%s). Using in-memory original.",
+            load_path, e,
+        )
+        img = original_img
+
     img = img.resize((256, 256), Image.Resampling.LANCZOS)
     
     # Final save

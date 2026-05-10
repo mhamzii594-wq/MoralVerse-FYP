@@ -8,29 +8,32 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <link rel="stylesheet" href="/static/css/professional.css">
 </head>
-<body>
-  <div class="min-vh-100 d-flex align-items-center" style="background: var(--bg-light);">
+<body class="page-enter">
+  <div class="min-vh-100 d-flex align-items-center" style="background:var(--bg-gradient);">
     <div class="container">
       <div class="row justify-content-center">
-        <div class="col-md-5">
+        <div class="col-md-5 col-lg-4">
           <div class="card-pro">
             <div class="text-center mb-4">
-              <h2 class="mb-2">Create Account</h2>
-              <p class="text-muted">Join MoralVerse.AI to create and download stories</p>
-              
-              <div class="alert alert-info alert-dismissible fade show" role="alert">
-                <small><strong>Note:</strong> After signup, you'll receive an email to verify your account before you can login.</small>
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+              <div class="navbar-brand-pro mb-2" style="font-size:1.75rem;">
+                <i class="bi bi-stars me-1"></i>MoralVerse.AI
+              </div>
+              <h2 class="mb-1" style="font-size:1.5rem;">Create Account</h2>
+              <p class="text-muted-pro text-small">Join MoralVerse.AI to create and download stories</p>
+              <div class="alert-pro alert-pro--info mt-3 text-start">
+                <i class="alert-icon bi bi-envelope-check"></i>
+                <div class="alert-body text-small">After signup you'll receive a verification email before you can login.</div>
               </div>
             </div>
 
             {% if messages %}
               {% for message in messages %}
-                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
-                  {{ message }}
-                  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                <div class="alert-pro alert-pro--{{ message.tags }}">
+                  <i class="alert-icon bi {% if message.tags == 'success' %}bi-check-circle-fill{% elif message.tags == 'error' or message.tags == 'danger' %}bi-exclamation-circle-fill{% else %}bi-info-circle-fill{% endif %}"></i>
+                  <div class="alert-body">{{ message }}</div>
                 </div>
               {% endfor %}
             {% endif %}
@@ -58,7 +61,9 @@
                 <input type="password" name="password_confirm" class="input-pro" placeholder="Confirm your password" required>
               </div>
 
-              <button type="submit" class="btn btn-pro w-100 mb-3">Create Account</button>
+              <button type="submit" class="btn btn-pro w-100 mb-3">
+                <i class="bi bi-person-plus me-2"></i>Create Account
+              </button>
               
               <div class="text-center">
                 <p class="text-muted small mb-0">
@@ -74,12 +79,14 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <div class="theme-switcher">
-    <button class="theme-toggle-btn" id="theme-toggle-btn" type="button">Theme</button>
+    <button class="theme-toggle-btn" id="theme-toggle-btn" type="button">
+      <i class="bi bi-palette me-1"></i>Theme
+    </button>
     <div class="theme-panel" id="theme-panel" style="display:none;">
-      <button class="theme-option" data-theme="light" type="button">Light</button>
-      <button class="theme-option" data-theme="dark" type="button">Dark</button>
-      <button class="theme-option" data-theme="ocean" type="button">Ocean</button>
-      <button class="theme-option" data-theme="sunset" type="button">Sunset</button>
+      <button class="theme-option" data-theme="light"  type="button"><i class="bi bi-sun me-2"></i>Light</button>
+      <button class="theme-option" data-theme="dark"   type="button"><i class="bi bi-moon me-2"></i>Dark</button>
+      <button class="theme-option" data-theme="ocean"  type="button"><i class="bi bi-water me-2"></i>Ocean</button>
+      <button class="theme-option" data-theme="sunset" type="button"><i class="bi bi-sunset me-2"></i>Sunset</button>
     </div>
   </div>
   <script>

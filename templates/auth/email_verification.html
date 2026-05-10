@@ -102,22 +102,21 @@
         <div class="content">
             <p class="welcome-text">Hi <strong>{{ user.username }}</strong>,</p>
 
-            <p>Welcome to MoralVerse.AI! Thank you for creating an account. To start creating amazing moral stories for children, please verify your email address by clicking the button below:</p>
+            <p>Welcome to MoralVerse.AI! Thank you for creating an account. To start creating amazing moral stories for children, please verify your email address using the verification code below:</p>
 
-            <div style="text-align: center;">
-                <a href="{{ verification_url }}" class="cta-button">
-                    ✅ Verify My Email Address
-                </a>
+            <div style="text-align: center; margin: 30px 0;">
+                <div style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: white; padding: 20px; border-radius: 12px; display: inline-block; font-size: 32px; font-weight: 800; letter-spacing: 8px; font-family: 'Courier New', monospace;">
+                    {{ otp }}
+                </div>
             </div>
+
+            <p style="text-align: center; font-size: 16px; margin: 20px 0;">
+                Enter this 6-digit code on the verification page to complete your account setup.
+            </p>
 
             <div class="warning-box">
-                <p><strong>Important:</strong> This verification link will expire in <span class="highlight">24 hours</span> for security reasons.</p>
+                <p><strong>Important:</strong> This verification code will expire in <span class="highlight">10 minutes</span> for security reasons.</p>
             </div>
-
-            <p>If the button above doesn't work, you can also copy and paste this link into your browser:</p>
-            <p style="word-break: break-all; background: #f3f4f6; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 14px;">
-                {{ verification_url }}
-            </p>
 
             <p>If you didn't create an account with MoralVerse.AI, please ignore this email. Your email address will not be used without verification.</p>
         </div>

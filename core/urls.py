@@ -11,7 +11,11 @@ urlpatterns = [
     path("login/", auth_views.login_view, name="login"),
     path("logout/", auth_views.logout_view, name="logout"),
     path("admin-login/", auth_views.admin_login_view, name="admin_login"),
-    path("auth/verify/<str:token>/", auth_views.verify_email_view, name="verify_email"),
+    path("auth/verify-otp/", auth_views.verify_otp_view, name="verify_otp"),
+    path("auth/resend-otp/", auth_views.resend_otp_view, name="resend_otp"),
+    path("account/settings/", auth_views.account_settings_view, name="account_settings"),
+    path("account/change-password/", auth_views.change_password_view, name="change_password"),
+    path("account/delete/", auth_views.delete_account_view, name="delete_account"),
     
     # Story Management
     path("api/story/", views.story_api, name="api_story"),
@@ -25,7 +29,7 @@ urlpatterns = [
     
     # Dashboards
     path("dashboard/", views.user_dashboard, name="user_dashboard"),
-    path("admin/dashboard/", views.admin_dashboard, name="admin_dashboard"),
+    path("management/dashboard/", views.admin_dashboard, name="admin_dashboard"),
     
     # Webcam Avatar
     path("api/process-webcam-avatar/", views.process_webcam_avatar_api, name="process_webcam_avatar"),

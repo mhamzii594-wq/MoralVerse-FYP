@@ -101,16 +101,29 @@ def _modelslab_poll(api_key: str, prediction_id: str, prefix: str) -> str | None
 
 
 def _modelslab_save(image_url: str, prefix: str) -> str:
-    """Download an image URL and save to images dir. Returns relative path."""
+    """Download an image URL, verify it is a valid image, and save to images dir."""
     import requests
+    from PIL import Image as _PILImg
+    from io import BytesIO as _BytesIO
+
     img_resp = requests.get(image_url, timeout=60)
     img_resp.raise_for_status()
-    if len(img_resp.content) < 5000:
-        raise RuntimeError(f"{prefix}: downloaded image too small ({len(img_resp.content)} bytes)")
+    content = img_resp.content
+
+    if len(content) < 5000:
+        raise RuntimeError(f"{prefix}: downloaded image too small ({len(content)} bytes)")
+
+    # Verify the bytes are actually a valid image before saving
+    try:
+        pil_img = _PILImg.open(_BytesIO(content))
+        pil_img.verify()  # raises if not a valid image format
+    except Exception as _e:
+        raise RuntimeError(f"{prefix}: downloaded content is not a valid image: {_e}")
+
     folder = _image_dir()
     filename = f"{prefix}_{int(time.time() * 1000)}.jpg"
     file_path = folder / filename
-    file_path.write_bytes(img_resp.content)
+    file_path.write_bytes(content)
     logger.info("%s image saved: %s", prefix, filename)
     return f"images/{filename}"
 
@@ -139,10 +152,9 @@ def _generate_modelslab(prompt: str, options: Dict[str, Any]) -> str:
     image_data = options.get("image_data")
 
     if image_data:
-        # --- img2img mode: FLUX Kontext Dev for superior character retention ---
+        # img2img: FLUX Kontext Dev — best character consistency across scenes
         if isinstance(image_data, str) and "," in image_data:
-            image_data = image_data.split(",")[1]  # strip data:image/...;base64, prefix
-
+            image_data = image_data.split(",")[1]
         payload = {
             "key": api_key,
             "model_id": "flux-kontext-dev",
@@ -159,15 +171,11 @@ def _generate_modelslab(prompt: str, options: Dict[str, Any]) -> str:
             "safety_checker": "no",
             "enhance_prompt": "yes",
         }
-        logger.info("Modelslab FLUX Kontext Dev (img2img): %s...", prompt[:60])
-        resp = requests.post(
-            "https://modelslab.com/api/v6/images/img2img",
-            json=payload,
-            timeout=90,
-        )
+        logger.info("ModelsLab FLUX Kontext Dev img2img: %s...", prompt[:60])
+        resp = requests.post("https://modelslab.com/api/v6/images/img2img", json=payload, timeout=90)
         log_prefix = "kontext"
     else:
-        # --- text2img mode: FLUX realtime ---
+        # text2img: FLUX Dev — highest quality scene images
         payload = {
             "key": api_key,
             "model_id": "flux",
@@ -176,17 +184,13 @@ def _generate_modelslab(prompt: str, options: Dict[str, Any]) -> str:
             "width": width,
             "height": height,
             "samples": "1",
-            "num_inference_steps": "30",
+            "num_inference_steps": "31",
             "guidance_scale": 7.5,
             "safety_checker": "no",
             "enhance_prompt": "yes",
         }
-        logger.info("Modelslab FLUX (text2img): %s...", prompt[:60])
-        resp = requests.post(
-            "https://modelslab.com/api/v6/realtime/text2img",
-            json=payload,
-            timeout=60,
-        )
+        logger.info("ModelsLab FLUX text2img: %s...", prompt[:60])
+        resp = requests.post("https://modelslab.com/api/v6/images/text2img", json=payload, timeout=90)
         log_prefix = "modelslab"
 
     resp.raise_for_status()
@@ -212,6 +216,90 @@ def _generate_modelslab(prompt: str, options: Dict[str, Any]) -> str:
         raise RuntimeError("Modelslab poll returned no URL")
 
     raise RuntimeError(f"Modelslab unexpected response status: {data.get('status')}")
+
+
+def _generate_modelslab_ghibli(prompt: str, options: Dict[str, Any]) -> str:
+    """
+    Generate image via ModelsLab using the dedicated Ghibli Diffusion model.
+    Uses img2img when an avatar is provided, text2img otherwise.
+    """
+    import requests
+
+    api_key = os.getenv("MODELSLAB_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("MODELSLAB_API_KEY not set")
+
+    width = str(int(options.get("width", 768)))
+    height = str(int(options.get("height", 768)))
+    neg = options.get(
+        "negative_prompt",
+        "photorealistic, realistic, 3d render, CGI, western cartoon, low quality, blurry, distorted, bad anatomy",
+    )
+    image_data = options.get("image_data")
+
+    if image_data:
+        if isinstance(image_data, str) and "," in image_data:
+            image_data = image_data.split(",")[1]
+        payload = {
+            "key": api_key,
+            "model_id": "ghibli",
+            "prompt": prompt,
+            "negative_prompt": neg,
+            "init_image": image_data,
+            "strength": options.get("strength", 0.65),
+            "base64": True,
+            "width": width,
+            "height": height,
+            "samples": "1",
+            "num_inference_steps": "30",
+            "guidance_scale": 7.5,
+            "safety_checker": "no",
+            "enhance_prompt": "yes",
+        }
+        logger.info("ModelsLab Ghibli img2img: %s...", prompt[:60])
+        resp = requests.post("https://modelslab.com/api/v6/images/img2img", json=payload, timeout=90)
+        log_prefix = "ghibli_i2i"
+    else:
+        payload = {
+            "key": api_key,
+            "model_id": "ghibli",
+            "prompt": prompt,
+            "negative_prompt": neg,
+            "width": width,
+            "height": height,
+            "samples": "1",
+            "num_inference_steps": "30",
+            "guidance_scale": 7.5,
+            "safety_checker": "no",
+            "enhance_prompt": "yes",
+        }
+        logger.info("ModelsLab Ghibli text2img: %s...", prompt[:60])
+        resp = requests.post("https://modelslab.com/api/v6/images/text2img", json=payload, timeout=90)
+        log_prefix = "ghibli"
+
+    resp.raise_for_status()
+    data = resp.json()
+
+    if data.get("status") == "error":
+        raise RuntimeError(f"ModelsLab Ghibli error: {data.get('message', data)}")
+
+    if data.get("status") == "success":
+        urls = data.get("output") or []
+        if not urls:
+            raise RuntimeError("ModelsLab Ghibli success but no output URLs")
+        return _modelslab_save(urls[0], log_prefix)
+
+    if data.get("status") == "processing":
+        prediction_id = data.get("id")
+        eta = int(data.get("eta", 15))
+        logger.info("ModelsLab Ghibli processing (id=%s, eta=%ss)...", prediction_id, eta)
+        time.sleep(min(eta, 20))
+        image_url = _modelslab_poll(api_key, prediction_id, log_prefix)
+        if image_url:
+            return _modelslab_save(image_url, log_prefix)
+        raise RuntimeError("ModelsLab Ghibli poll returned no URL")
+
+    raise RuntimeError(f"ModelsLab Ghibli unexpected status: {data.get('status')}")
 
 
 def _generate_pollinations(prompt: str, options: Dict[str, Any]) -> str:
@@ -418,7 +506,18 @@ def generate_image(prompt: str, options: Dict[str, Any] | None = None) -> str:
             logger.warning("Pollinations failed: %s. Falling back...", e)
             return _fallback_all_or_stub(prompt, dict(options, image_provider="pollinations"))
 
-    # Modelslab — 30 free/day, FLUX model, high quality
+    # Modelslab Ghibli — dedicated ghibli-diffusion model for authentic Ghibli art style
+    if provider == "modelslab_ghibli":
+        try:
+            return _generate_modelslab_ghibli(prompt, options)
+        except Exception as e:
+            logger.warning("ModelsLab Ghibli failed: %s. Falling back to FLUX...", e)
+            try:
+                return _generate_modelslab(prompt, options)
+            except Exception:
+                return _fallback_all_or_stub(prompt, dict(options, image_provider="modelslab_ghibli"))
+
+    # Modelslab FLUX — high quality scene images
     if provider == "modelslab":
         try:
             return _generate_modelslab(prompt, options)

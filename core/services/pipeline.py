@@ -93,9 +93,11 @@ def generate_story_video(user_input_id: int) -> str:
         # Step 2: Generate images for each scene (with consistency via img2img)
         logger.info("Generating scene images...")
         scene_images = []
+        # Always use the Ghibli avatar as reference for ALL scenes —
+        # switching to the first scene image after scene 1 causes character drift.
         avatar_path = story_request.avatar_path if story_request.avatar_path else None
-        reference_image_path = avatar_path  # Start with avatar for consistency
-        
+        character_anchor = story_json.get('character_anchor', '')
+
         for i, scene_data in enumerate(scenes):
             scene_id = scene_data.get('id', i + 1)
             scene = scene_records.get(scene_id)
@@ -108,34 +110,30 @@ def generate_story_video(user_input_id: int) -> str:
                     decision=scene_data.get('decision'),
                 )
                 scene_records[scene_id] = scene
-            
+
             image_prompt = scene_data.get('image_prompt', '')
             if not image_prompt:
-                # Generate a default prompt from scene text
                 image_prompt = f"Children's story illustration: {scene_data.get('text', '')[:100]}"
+
+            # Re-inject character anchor into prompt if missing (safety net)
+            if character_anchor and character_anchor not in image_prompt:
+                image_prompt = f"{image_prompt}, {character_anchor}"
 
             # Reuse existing image if already generated (e.g. from preview page)
             if scene.image_path:
                 logger.info(f"Reusing existing image for scene {scene_data.get('id')}: {scene.image_path}")
                 scene_images.append(scene.image_path)
-                if i == 0:
-                    reference_image_path = scene.image_path
                 continue
 
-            # Use reference image for consistency (avatar for first scene, then previous scene)
+            # Always pass avatar as reference for consistent character appearance
             image_path = generate_scene_image(
                 image_prompt,
-                reference_image_path,
+                avatar_path,   # Same avatar reference for every scene
                 image_provider=story_request.image_provider,
             )
             scene.image_path = image_path
             scene.save()
             scene_images.append(image_path)
-
-            # Update reference to this scene's image for next scene's consistency
-            if i == 0:  # After first scene, use its image as reference for flow
-                reference_image_path = image_path
-
             logger.info(f"Generated image for scene {scene_data.get('id')}: {image_path}")
         
         # Step 3: Generate audio for each scene

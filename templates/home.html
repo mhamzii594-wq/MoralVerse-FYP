@@ -10,32 +10,48 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <link rel="stylesheet" href="/static/css/professional.css">
-  <style>
-    .form-label { font-weight: 600; color: var(--text-dark); margin-bottom: 0.5rem; font-size: 0.9rem; }
-    .section-title { font-size: 2rem; font-weight: 800; margin-bottom: 2rem; color: var(--text-dark); }
-    .feature-icon { font-size: 3rem; margin-bottom: 1rem; }
-  </style>
 </head>
-<body>
+<body class="page-enter">
+
   <!-- Navbar -->
   <nav class="navbar navbar-pro navbar-expand-lg sticky-top">
     <div class="container">
-      <span class="navbar-brand-pro d-inline-flex align-items-center gap-2">
-        <i class="bi bi-sparkles"></i>
-        MoralVerse.AI
-      </span>
-      <div class="navbar-nav ms-auto">
+      <a class="navbar-brand-pro d-inline-flex align-items-center gap-2" href="{% url 'home' %}">
+        <i class="bi bi-stars"></i>MoralVerse.AI
+      </a>
+      <div class="navbar-nav ms-auto gap-1 align-items-center">
         {% if user.is_authenticated %}
-          <a class="nav-link fw-semibold" href="{% url 'user_dashboard' %}" style="color: var(--text-dark);">My Dashboard</a>
-          <a class="nav-link fw-semibold" href="{% url 'logout' %}" style="color: var(--text-dark);">Logout</a>
+          <a class="nav-link" href="{% url 'user_dashboard' %}"><i class="bi bi-grid me-1"></i>Dashboard</a>
+          {% if user.is_staff %}
+            <a class="nav-link" href="{% url 'admin_dashboard' %}"><i class="bi bi-shield me-1"></i>Admin</a>
+          {% endif %}
+          <div class="account-menu">
+            <button class="account-avatar-btn" id="account-avatar-btn" type="button" title="{{ user.username }}">
+              <div class="account-avatar">{{ user.username|slice:":2"|upper }}</div>
+            </button>
+            <div class="account-dropdown" id="account-dropdown" style="display:none;">
+              <div class="account-dropdown-header">
+                <div class="account-avatar account-avatar--lg">{{ user.username|slice:":2"|upper }}</div>
+                <div class="account-dropdown-header-text">
+                  <div class="acct-username">{{ user.username }}</div>
+                  <div class="acct-email">{{ user.email }}</div>
+                </div>
+              </div>
+              <div class="account-dropdown-nav">
+                <a href="{% url 'user_dashboard' %}" class="account-dropdown-item"><i class="bi bi-grid"></i>My Stories</a>
+                <a href="{% url 'account_settings' %}" class="account-dropdown-item"><i class="bi bi-gear"></i>Account Settings</a>
+              </div>
+              <div class="account-dropdown-divider"></div>
+              <div class="account-dropdown-nav">
+                <a href="{% url 'logout' %}" class="account-dropdown-item account-dropdown-item--danger"><i class="bi bi-box-arrow-right"></i>Logout</a>
+              </div>
+            </div>
+          </div>
         {% else %}
-          <a class="nav-link fw-semibold" href="{% url 'login' %}" style="color: var(--text-dark);">Login</a>
-          <a class="nav-link fw-semibold" href="{% url 'signup' %}">
-            <span class="btn-pro btn-sm">Sign Up</span>
+          <a class="nav-link" href="{% url 'login' %}"><i class="bi bi-box-arrow-in-right me-1"></i>Login</a>
+          <a href="{% url 'signup' %}" class="btn btn-pro btn-pro--sm ms-2">
+            <i class="bi bi-person-plus me-1"></i>Sign Up
           </a>
-        {% endif %}
-        {% if user.is_staff %}
-          <a class="nav-link fw-semibold" href="{% url 'admin_dashboard' %}" style="color: var(--text-dark);">Admin</a>
         {% endif %}
       </div>
     </div>
@@ -61,8 +77,8 @@
           </div>
         </div>
       </div>
-      
-      <!-- Decorative Floating Element -->
+
+      <!-- Decorative Floating Elements -->
       <div class="d-none d-lg-block position-absolute" style="top: 10%; right: 5%; animation: float 6s ease-in-out infinite; opacity: 0.8; z-index: 2;">
         <div class="card-pro glass-card" style="width: 240px; background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-color: rgba(255,255,255,0.2);">
           <div class="d-flex align-items-center gap-3 mb-3">
@@ -74,7 +90,7 @@
           <div style="height: 100px; background: rgba(255,255,255,0.05); border-radius: 12px; border: 1px dashed rgba(255,255,255,0.2);"></div>
         </div>
       </div>
-      
+
       <div class="d-none d-lg-block position-absolute" style="bottom: 10%; left: 5%; animation: float 8s ease-in-out infinite reverse; opacity: 0.8; z-index: 2;">
         <div class="card-pro glass-card" style="width: 200px; background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-color: rgba(255,255,255,0.2);">
           <div class="text-white small mb-2 fw-bold">Voice Synthesis</div>
@@ -89,36 +105,40 @@
   <!-- Main Content -->
   <main class="container my-5">
     <div class="row g-4">
+
       <!-- Form Section -->
       <div class="col-lg-5">
         <div class="card-pro">
-          <div class="d-flex align-items-center mb-4">
-              <h3 class="mb-0 d-flex align-items-center gap-2">
-                <i class="bi bi-pencil-square"></i>
-                Create Your Story
-              </h3>
+          <div class="d-flex align-items-center gap-2 mb-4">
+            <i class="bi bi-pencil-square" style="font-size:1.4rem; color:var(--primary);"></i>
+            <h3 class="mb-0">Create Your Story</h3>
           </div>
-          
+
           <form method="post" action="{% url 'create_story' %}" enctype="multipart/form-data" id="story-form">
             {% csrf_token %}
 
-            <div class="mb-4">
-              <label class="form-label">Child's Name</label>
+            <!-- Story Details -->
+            <div class="mb-3 pb-1" style="border-bottom: 2px solid var(--border);">
+              <small class="text-muted fw-semibold" style="letter-spacing:0.06em; font-size:0.7rem;">STORY DETAILS</small>
+            </div>
+
+            <div class="mb-3">
+              <label class="label-pro"><i class="bi bi-person me-1"></i>Child's Name</label>
               <input type="text" name="child_name" class="input-pro" placeholder="Enter child's name" required>
             </div>
 
-            <div class="mb-4">
-              <label class="form-label">Child's Age</label>
-              <input type="number" name="child_age" class="input-pro" placeholder="Enter child's age (3-12)" min="3" max="12" required>
+            <div class="mb-3">
+              <label class="label-pro"><i class="bi bi-calendar me-1"></i>Child's Age</label>
+              <input type="number" name="child_age" class="input-pro" placeholder="Age (3–12)" min="3" max="12" required>
             </div>
 
-            <div class="mb-4">
-              <label class="form-label">Moral Theme</label>
-              <input type="text" name="moral_theme" class="input-pro" placeholder="honesty, kindness, courage, respect..." required>
+            <div class="mb-3">
+              <label class="label-pro"><i class="bi bi-heart me-1"></i>Moral Theme</label>
+              <input type="text" name="moral_theme" class="input-pro" placeholder="honesty, kindness, courage..." required>
             </div>
 
-            <div class="mb-4">
-              <label class="form-label">Language</label>
+            <div class="mb-3">
+              <label class="label-pro"><i class="bi bi-translate me-1"></i>Language</label>
               <select name="language" class="input-pro" required>
                 <option value="en" selected>English</option>
                 <option value="ur">Urdu</option>
@@ -126,96 +146,119 @@
             </div>
 
             <div class="mb-4">
-              <label class="form-label">Story Prompt (Optional)</label>
+              <label class="label-pro">
+                <i class="bi bi-chat-text me-1"></i>Story Prompt
+                <span class="text-muted fw-normal">(Optional)</span>
+              </label>
               <textarea name="prompt" rows="3" class="input-pro" placeholder="Describe your story idea..."></textarea>
             </div>
 
-            <div class="mb-4">
-              <label class="form-label">AI Model</label>
+            <!-- AI Settings -->
+            <div class="mb-3 pb-1" style="border-bottom: 2px solid var(--border);">
+              <small class="text-muted fw-semibold" style="letter-spacing:0.06em; font-size:0.7rem;">AI SETTINGS</small>
+            </div>
+
+            <div class="mb-3">
+              <label class="label-pro"><i class="bi bi-cpu me-1"></i>AI Model</label>
               <select name="llm_provider" class="input-pro">
-                <option value="">Auto (from .env)</option>
-                <option value="gemini">Gemini 1.5 Flash</option>
-                <option value="openai">OpenAI GPT-4o Mini</option>
-                <option value="groq">Groq Mixtral</option>
+                <option value="">Auto</option>
+                <option value="modelslab" selected>ModelsLab — Llama 3.1 70B ★</option>
+                <option value="gemini">Gemini — 2.0 Flash</option>
+                <option value="openai">OpenAI — GPT-4o Mini</option>
+                <option value="groq">Groq — Mixtral 8x7B</option>
               </select>
             </div>
 
-            <div class="mb-4">
-              <label class="form-label">Image Generator</label>
+            <div class="mb-3">
+              <label class="label-pro"><i class="bi bi-image me-1"></i>Image Generator</label>
               <select name="image_provider" class="input-pro">
-                <option value="">Auto (from .env)</option>
-                <option value="local_sd">Local SD Model (Dreamshaper)</option>
-                <option value="gemini">Gemini Imagen</option>
-                <option value="stability">Stability AI</option>
-                <option value="openai">OpenAI DALL-E 3</option>
+                <option value="">Auto</option>
+                <option value="modelslab" selected>ModelsLab — FLUX Dev (Scene Images) ★</option>
+                <option value="modelslab_ghibli">ModelsLab — Ghibli Model (Anime Style) ★</option>
+                <option value="gemini">Gemini — Imagen 2.0</option>
+                <option value="stability">Stability AI — Core</option>
+                <option value="openai">OpenAI — DALL-E 3</option>
+                <option value="pollinations">Pollinations — FLUX (Free)</option>
               </select>
             </div>
 
             <div class="mb-4">
-              <label class="form-label">TTS Provider</label>
+              <label class="label-pro"><i class="bi bi-volume-up me-1"></i>TTS Provider</label>
               <select name="tts_provider" class="input-pro">
-                <option value="">Auto (from .env)</option>
-                <option value="gemini">Gemini TTS</option>
-                <option value="openai">OpenAI TTS</option>
+                <option value="">Auto</option>
+                <option value="modelslab" selected>ModelsLab — Madison Voice ★</option>
+                <option value="gemini">Gemini — 2.0 Flash TTS</option>
+                <option value="openai">OpenAI — TTS-1 Nova</option>
+                <option value="elevenlabs">ElevenLabs — Multilingual v2</option>
               </select>
             </div>
 
+            <!-- Avatar -->
+            <div class="mb-3 pb-1" style="border-bottom: 2px solid var(--border);">
+              <small class="text-muted fw-semibold" style="letter-spacing:0.06em; font-size:0.7rem;">AVATAR <span class="fw-normal">(Optional)</span></small>
+            </div>
+
             <div class="mb-4">
-              <label class="form-label">Avatar (Optional)</label>
-              
-              <!-- Tabs for Upload/Webcam -->
               <ul class="nav nav-tabs mb-3" id="avatar-tabs" role="tablist">
                 <li class="nav-item" role="presentation">
                   <button class="nav-link active" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload-pane" type="button" role="tab">
-                    Upload
+                    <i class="bi bi-upload me-1"></i>Upload
                   </button>
                 </li>
                 <li class="nav-item" role="presentation">
                   <button class="nav-link" id="webcam-tab" data-bs-toggle="tab" data-bs-target="#webcam-pane" type="button" role="tab">
-                    Webcam
+                    <i class="bi bi-camera me-1"></i>Webcam
                   </button>
                 </li>
               </ul>
-              
+
               <div class="tab-content" id="avatar-tab-content">
                 <!-- Upload Tab -->
                 <div class="tab-pane fade show active" id="upload-pane" role="tabpanel">
                   <input type="file" name="avatar" class="input-pro" accept="image/*" id="avatar-input">
                   <div id="avatar-preview" class="mt-3" style="display: none;">
-                    <img id="avatar-preview-img" src="" alt="Preview" class="rounded" style="max-width: 150px; border: 3px solid var(--primary); box-shadow: var(--shadow);">
+                    <img id="avatar-preview-img" src="" alt="Preview" class="rounded" style="max-width: 120px; border: 3px solid var(--primary); box-shadow: var(--shadow);">
                     <div class="mt-2">
                       <div class="form-check mb-2">
                         <input class="form-check-input upload-ghibli-check" type="checkbox" id="convert-ghibli-upload" checked>
-                        <label class="form-check-label" for="convert-ghibli-upload">Convert to Ghibli Style</label>
+                        <label class="form-check-label text-small" for="convert-ghibli-upload">Convert to Ghibli Style</label>
                       </div>
-                      <button type="button" class="btn btn-pro-secondary btn-sm" id="process-upload-btn">Process Avatar</button>
-                      <div id="upload-processing-status" class="mt-2 small text-muted" style="display: none;"></div>
+                      <button type="button" class="btn btn-pro btn-pro--sm" id="process-upload-btn">
+                        <i class="bi bi-magic me-1"></i>Process Avatar
+                      </button>
+                      <div id="upload-processing-status" class="mt-2 text-small text-muted" style="display: none;"></div>
                     </div>
                   </div>
                 </div>
-                
+
                 <!-- Webcam Tab -->
                 <div class="tab-pane fade" id="webcam-pane" role="tabpanel">
                   <div class="mb-3">
-                    <video id="webcam-video" autoplay playsinline style="width: 100%; max-width: 400px; border-radius: 12px; display: none;"></video>
+                    <video id="webcam-video" autoplay playsinline style="width: 100%; max-width: 400px; border-radius: 12px; display: none; border: 3px solid var(--primary);"></video>
                     <canvas id="webcam-canvas" style="display: none;"></canvas>
                   </div>
-                  <div class="d-flex gap-2 mb-3">
-                    <button type="button" class="btn btn-pro-secondary btn-sm" id="start-webcam-btn">Start Camera</button>
-                    <button type="button" class="btn btn-pro btn-sm" id="capture-btn" style="display: none;">Capture Photo</button>
-                    <button type="button" class="btn btn-pro-secondary btn-sm" id="stop-webcam-btn" style="display: none;">Stop Camera</button>
+                  <div class="d-flex gap-2 mb-3 flex-wrap">
+                    <button type="button" class="btn btn-pro btn-pro--ghost btn-pro--sm" id="start-webcam-btn">
+                      <i class="bi bi-camera me-1"></i>Start Camera
+                    </button>
+                    <button type="button" class="btn btn-pro btn-pro--sm" id="capture-btn" style="display: none;">
+                      <i class="bi bi-camera-fill me-1"></i>Capture
+                    </button>
+                    <button type="button" class="btn btn-pro btn-pro--danger btn-pro--sm" id="stop-webcam-btn" style="display: none;">
+                      <i class="bi bi-x-circle me-1"></i>Stop
+                    </button>
                   </div>
                   <div class="form-check mb-3">
                     <input class="form-check-input" type="checkbox" id="convert-ghibli" checked>
-                    <label class="form-check-label" for="convert-ghibli">
-                      Convert to Ghibli Style
-                    </label>
+                    <label class="form-check-label text-small" for="convert-ghibli">Convert to Ghibli Style</label>
                   </div>
                   <div id="webcam-preview" class="mt-3" style="display: none;">
-                    <img id="webcam-preview-img" src="" alt="Webcam Preview" class="rounded" style="max-width: 150px; border: 3px solid var(--primary); box-shadow: var(--shadow);">
+                    <img id="webcam-preview-img" src="" alt="Webcam Preview" class="rounded" style="max-width: 120px; border: 3px solid var(--primary); box-shadow: var(--shadow);">
                     <div class="mt-2">
-                      <button type="button" class="btn btn-pro-secondary btn-sm" id="process-webcam-btn">Process Avatar</button>
-                      <div id="processing-status" class="mt-2 small text-muted" style="display: none;"></div>
+                      <button type="button" class="btn btn-pro btn-pro--sm" id="process-webcam-btn">
+                        <i class="bi bi-magic me-1"></i>Process Avatar
+                      </button>
+                      <div id="processing-status" class="mt-2 text-small text-muted" style="display: none;"></div>
                     </div>
                   </div>
                   <input type="hidden" name="webcam_avatar_path" id="webcam-avatar-path">
@@ -224,16 +267,15 @@
             </div>
 
             <button type="submit" class="btn btn-pro w-100 mb-3" id="generate-btn">
-              Generate Story
+              <i class="bi bi-stars me-2"></i>Generate Story
             </button>
 
-            <!-- Generation Progress Tracker (Hidden by default) -->
+            <!-- Generation Progress Tracker -->
             <div id="generation-progress" class="mt-4 p-3 rounded" style="display: none; background: var(--bg-light); border: 1px solid var(--border);">
               <h6 class="fw-bold mb-3 d-flex align-items-center gap-2">
-                <i class="bi bi-gear-fill spin-slow"></i>
-                Processing Pipeline
+                <i class="bi bi-gear-fill spin-slow"></i>Processing Pipeline
               </h6>
-              <div class="progress-steps small">
+              <div class="progress-steps text-small">
                 <div class="d-flex align-items-center gap-2 mb-2 text-muted" id="step-llm">
                   <i class="bi bi-circle"></i> Drafting the story plot...
                 </div>
@@ -245,10 +287,10 @@
                 </div>
               </div>
             </div>
-            
-            <p class="text-center text-muted small mb-0">
+
+            <p class="text-center text-muted text-small mb-0 mt-2">
               {% if user.is_authenticated %}
-                Your story will be saved and you can create a video!
+                <i class="bi bi-cloud-check me-1 text-success"></i>Your story will be saved to your dashboard.
               {% else %}
                 <a href="{% url 'signup' %}" class="text-decoration-none fw-semibold">Sign up</a> to download videos and save your stories.
               {% endif %}
@@ -261,32 +303,30 @@
       <div class="col-lg-7">
         <div class="card-pro">
           <div class="d-flex justify-content-between align-items-center mb-4">
-              <h3 class="mb-0 d-flex align-items-center gap-2">
-                <i class="bi bi-eye"></i>
-                Story Preview
-              </h3>
+            <h3 class="mb-0 d-flex align-items-center gap-2">
+              <i class="bi bi-eye"></i>Story Preview
+            </h3>
             <div class="btn-group">
-              <button type="button" class="btn btn-pro-secondary btn-sm" id="toggle-json-btn">
+              <button type="button" class="btn btn-pro btn-pro--ghost btn-pro--sm" id="toggle-json-btn">
                 <i class="bi bi-code-slash"></i> JSON
               </button>
             </div>
           </div>
-          
+
           <div class="story-content">
             {% if story_json %}
             <div id="json-container" style="display: none;">
               <pre id="story-json" class="story-json-pre text-light" style="max-height: 400px; overflow-y: auto; font-size: 0.85rem; font-family: 'Courier New', monospace;">{{ story_json }}</pre>
             </div>
-            
+
             <div id="preview-display" class="py-2">
-              <div class="alert alert-success d-flex align-items-center gap-3 mb-4">
-                <i class="bi bi-check-circle-fill fs-4"></i>
-                <div>
-                  <strong>Story Generated Successfully!</strong><br>
-                  Review the scenes below and make your first moral choice.
+              <div class="alert-pro alert-pro--success mb-4">
+                <i class="alert-icon bi bi-check-circle-fill"></i>
+                <div class="alert-body">
+                  <strong>Story Generated!</strong> Review the scenes below and make your first moral choice.
                 </div>
               </div>
-              
+
               <div class="d-grid gap-3 mb-4">
                 <button type="button" class="btn-decision" id="decision-a-btn" disabled>
                   <span class="choice-letter">A</span>
@@ -298,12 +338,22 @@
                 </button>
               </div>
             </div>
+
             {% else %}
             <div class="text-center py-5">
-              <h4 class="text-muted mb-3">Ready to Create?</h4>
-              <p class="text-muted">
-                Fill in the form and click <strong>"Generate Story"</strong> to create your interactive moral story with AI!
+              <div style="font-size:4rem; color:var(--primary); opacity:0.25; margin-bottom:1.25rem;">
+                <i class="bi bi-journal-bookmark-fill"></i>
+              </div>
+              <h4 class="mb-2" style="color:var(--text-muted);">Ready to Create?</h4>
+              <p class="text-muted-pro text-small mb-3">
+                Fill in the form and click <strong>Generate Story</strong> to create your interactive moral story with AI.
               </p>
+              <div class="d-flex gap-2 justify-content-center flex-wrap">
+                <span class="badge-pro badge-primary"><i class="bi bi-robot me-1"></i>AI Story</span>
+                <span class="badge-pro badge-success"><i class="bi bi-palette me-1"></i>Images</span>
+                <span class="badge-pro badge-secondary"><i class="bi bi-volume-up me-1"></i>Audio</span>
+                <span class="badge-pro badge-warning"><i class="bi bi-camera-video me-1"></i>Video</span>
+              </div>
             </div>
             {% endif %}
           </div>
@@ -311,7 +361,9 @@
 
         {% if story and story.scenes %}
         <div class="card-pro mt-4">
-          <h4 class="mb-4">Scene Images</h4>
+          <h4 class="mb-4 d-flex align-items-center gap-2">
+            <i class="bi bi-images" style="color:var(--primary);"></i>Scene Images
+          </h4>
           <div class="row g-3">
             {% for scene in story.scenes %}
             <div class="col-md-6">
@@ -330,12 +382,10 @@
                   <small>Painting scene {{ scene.id }}...</small>
                 </div>
                 {% endif %}
-
                 {% if scene.audio_path %}
                 <div class="mt-2">
                   <audio controls class="w-100" style="height: 35px;">
                     <source src="/media/{{ scene.audio_path }}" type="audio/mpeg">
-                    Your browser does not support the audio element.
                   </audio>
                 </div>
                 {% endif %}
@@ -351,12 +401,14 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <div class="theme-switcher">
-    <button class="theme-toggle-btn" id="theme-toggle-btn" type="button">Theme</button>
+    <button class="theme-toggle-btn" id="theme-toggle-btn" type="button">
+      <i class="bi bi-palette me-1"></i>Theme
+    </button>
     <div class="theme-panel" id="theme-panel" style="display:none;">
-      <button class="theme-option" data-theme="light" type="button">Light</button>
-      <button class="theme-option" data-theme="dark" type="button">Dark</button>
-      <button class="theme-option" data-theme="ocean" type="button">Ocean</button>
-      <button class="theme-option" data-theme="sunset" type="button">Sunset</button>
+      <button class="theme-option" data-theme="light"  type="button"><i class="bi bi-sun me-2"></i>Light</button>
+      <button class="theme-option" data-theme="dark"   type="button"><i class="bi bi-moon me-2"></i>Dark</button>
+      <button class="theme-option" data-theme="ocean"  type="button"><i class="bi bi-water me-2"></i>Ocean</button>
+      <button class="theme-option" data-theme="sunset" type="button"><i class="bi bi-sunset me-2"></i>Sunset</button>
     </div>
   </div>
   <script>
@@ -381,6 +433,15 @@
       document.addEventListener("click", (e) => {
         if (!e.target.closest(".theme-switcher")) panel.style.display = "none";
       });
+    })();
+
+    // Account menu dropdown
+    (function () {
+      const btn = document.getElementById("account-avatar-btn");
+      const dd = document.getElementById("account-dropdown");
+      if (!btn || !dd) return;
+      btn.addEventListener("click", e => { e.stopPropagation(); dd.style.display = dd.style.display === "none" ? "block" : "none"; });
+      document.addEventListener("click", () => { if (dd) dd.style.display = "none"; });
     })();
 
     let lastUploadedData = null;
@@ -409,12 +470,12 @@
 
     startBtn?.addEventListener('click', async function() {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
-            width: 640, 
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: 640,
             height: 480,
             facingMode: 'user'
-          } 
+          }
         });
         video.srcObject = stream;
         video.style.display = 'block';
@@ -445,7 +506,7 @@
       canvas.height = video.videoHeight;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(video, 0, 0);
-      
+
       lastCapturedData = canvas.toDataURL('image/jpeg', 0.9);
       document.getElementById('webcam-preview-img').src = lastCapturedData;
       document.getElementById('webcam-preview').style.display = 'block';
@@ -489,8 +550,7 @@
           document.getElementById('webcam-avatar-path').value = data.avatar_path;
           statusEl.textContent = '✓ Avatar processed successfully!';
           statusEl.style.color = 'var(--success)';
-          
-          // Update preview with processed avatar
+
           const processedUrl = `/media/${data.avatar_path}?t=${Date.now()}`;
           if (buttonEl.id === 'process-upload-btn') {
             document.getElementById('avatar-preview-img').src = processedUrl;
@@ -509,27 +569,24 @@
       }
     }
 
-    // Bind Upload Process Button
     document.getElementById('process-upload-btn')?.addEventListener('click', function() {
       handleProcessAvatar(
-        lastUploadedData, 
+        lastUploadedData,
         document.getElementById('convert-ghibli-upload').checked,
         document.getElementById('upload-processing-status'),
         this
       );
     });
 
-    // Bind Webcam Process Button
     processBtn?.addEventListener('click', function() {
       handleProcessAvatar(
-        lastCapturedData, 
+        lastCapturedData,
         document.getElementById('convert-ghibli').checked,
         processingStatus,
         this
       );
     });
 
-    // Helper function to get CSRF token
     function getCookie(name) {
       let cookieValue = null;
       if (document.cookie && document.cookie !== '') {
@@ -549,19 +606,18 @@
     document.getElementById('story-form')?.addEventListener('submit', function() {
       const btn = document.getElementById('generate-btn');
       const progress = document.getElementById('generation-progress');
-      
+
       btn.innerHTML = '<span class="spinner-pro" style="width: 20px; height: 20px; border-width: 3px; display: inline-block; margin-right: 10px; vertical-align: middle;"></span> Generating...';
       btn.disabled = true;
-      
+
       progress.style.display = 'block';
-      
-      // Simulate progress steps
+
       const steps = [
         {id: 'step-llm', text: 'Drafting the story plot...'},
         {id: 'step-image', text: 'Painting scene illustrations...'},
         {id: 'step-audio', text: 'Narrating moral lessons...'}
       ];
-      
+
       let currentStep = 0;
       const updateSteps = () => {
         if (currentStep < steps.length) {
@@ -570,7 +626,7 @@
           stepEl.classList.add('text-primary', 'fw-bold');
           stepEl.querySelector('i').className = 'bi bi-check-circle-fill';
           currentStep++;
-          setTimeout(updateSteps, 8000); // Wait 8s between steps for realism
+          setTimeout(updateSteps, 8000);
         }
       };
       setTimeout(updateSteps, 1000);
@@ -580,7 +636,7 @@
     document.getElementById('toggle-json-btn')?.addEventListener('click', function() {
       const jsonContainer = document.getElementById('json-container');
       const previewDisplay = document.getElementById('preview-display');
-      
+
       if (jsonContainer.style.display === 'none') {
         jsonContainer.style.display = 'block';
         previewDisplay.style.display = 'none';
@@ -597,12 +653,12 @@
       const storyJsonEl = document.getElementById("story-json");
       const btnA = document.getElementById("decision-a-btn");
       const btnB = document.getElementById("decision-b-btn");
-      
+
       if (!storyJsonEl || !btnA || !btnB) return;
 
       let story = null;
       const jsonText = storyJsonEl.textContent.trim();
-      
+
       if (jsonText) {
         try {
           story = JSON.parse(jsonText);
@@ -614,7 +670,7 @@
       }
 
       const hasDecisions = story.scenes && story.scenes.some(scene => scene.decision);
-      
+
       if (hasDecisions) {
         btnA.disabled = false;
         btnB.disabled = false;
@@ -624,7 +680,7 @@
         if (!story) return;
         btnA.disabled = true;
         btnB.disabled = true;
-        
+
         try {
           const resp = await fetch("/api/decision/", {
             method: "POST",
@@ -634,21 +690,20 @@
             },
             body: JSON.stringify({ story, option }),
           });
-          
+
           if (!resp.ok) throw new Error('Request failed');
-          
+
           const data = await resp.json();
           story = data;
           storyJsonEl.textContent = JSON.stringify(data, null, 2);
-          
-          // Update decision buttons UI
+
           const scenesWithDecision = data.scenes.filter(s => s.decision);
           if (scenesWithDecision.length > 0) {
               const currentDecision = scenesWithDecision[0].decision;
               document.querySelector('#decision-a-btn .choice-text').textContent = currentDecision.A;
               document.querySelector('#decision-b-btn .choice-text').textContent = currentDecision.B;
           }
-          
+
           btnA.disabled = false;
           btnB.disabled = false;
         } catch (err) {

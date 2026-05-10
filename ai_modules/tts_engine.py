@@ -29,13 +29,16 @@ def log_api_error(msg):
     with open(debug_log, "a", encoding="utf-8") as f:
         f.write(f"[{time.ctime()}] {msg}\n")
 
-TTSProvider = Literal["gemini", "openai", "elevenlabs", "coqui", "stub"]
+TTSProvider = Literal["gemini", "openai", "elevenlabs", "coqui", "modelslab", "stub"]
 
 
 def _detect_provider(override: str | None = None) -> TTSProvider:
     explicit = (override or os.getenv("TTS_PROVIDER") or "").strip().lower()
-    if explicit in {"gemini", "openai", "elevenlabs", "coqui", "stub"}:
+    if explicit in {"gemini", "openai", "elevenlabs", "coqui", "modelslab", "stub"}:
         return explicit  # type: ignore[return-value]
+
+    if os.getenv("MODELSLAB_API_KEY"):
+        return "modelslab"
 
     if os.getenv("GEMINI_API_KEY"):
         try:
@@ -112,6 +115,79 @@ def generate_audio(
     ext = "wav" if provider in {"gemini", "openai"} else "mp3"
     output_path = audio_dir / f"scene_{timestamp}_{text_hash}.{ext}"
     
+    if provider == "modelslab":
+        try:
+            import requests as _req, time as _time
+            api_key = os.getenv("MODELSLAB_API_KEY", "").strip()
+            if not api_key:
+                raise RuntimeError("MODELSLAB_API_KEY not set")
+
+            # ModelsLab TTS only reliably supports English; route Urdu to next provider
+            if language == "ur":
+                raise RuntimeError("ModelsLab TTS does not support Urdu; routing to Gemini")
+
+            voice_id = os.getenv("MODELSLAB_TTS_VOICE_ID", "madison")  # clear female voice
+            payload = {
+                "key": api_key,
+                "prompt": scene_text,
+                "voice_id": voice_id,
+                "language": "american english",
+                "speed": 1,
+                "emotion": True,   # expressive narration
+            }
+            resp = _req.post(
+                "https://modelslab.com/api/v6/voice/text_to_speech",
+                json=payload,
+                timeout=60,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+            if data.get("status") == "error":
+                raise RuntimeError(f"ModelsLab TTS error: {data.get('message', data)}")
+
+            audio_url = None
+            if data.get("status") == "success":
+                out = data.get("output")
+                audio_url = (out[0] if isinstance(out, list) else out) or ""
+            elif data.get("status") == "processing":
+                fetch_id = data.get("id")
+                eta = int(data.get("eta", 10))
+                logger.info("ModelsLab TTS processing (id=%s, eta=%ss)...", fetch_id, eta)
+                _time.sleep(min(eta, 15))
+                for _ in range(8):
+                    fetch_resp = _req.post(
+                        f"https://modelslab.com/api/v6/voice/fetch/{fetch_id}",
+                        json={"key": api_key},
+                        timeout=30,
+                    )
+                    fdata = fetch_resp.json()
+                    if fdata.get("status") == "success":
+                        out = fdata.get("output")
+                        audio_url = (out[0] if isinstance(out, list) else out) or ""
+                        break
+                    if fdata.get("status") == "error":
+                        raise RuntimeError(f"ModelsLab TTS poll error: {fdata.get('message', fdata)}")
+                    _time.sleep(5)
+
+            if not audio_url:
+                raise RuntimeError("ModelsLab TTS returned no audio URL")
+
+            dl = _req.get(audio_url, timeout=60)
+            dl.raise_for_status()
+            if len(dl.content) < 500:
+                raise RuntimeError(f"ModelsLab TTS audio too small ({len(dl.content)} bytes)")
+
+            output_path = audio_dir / f"scene_{timestamp}_{text_hash}_ml.mp3"
+            output_path.write_bytes(dl.content)
+            logger.info("ModelsLab TTS saved: %s (%d bytes)", output_path.name, len(dl.content))
+            return f"audio/{output_path.name}"
+
+        except Exception as e:
+            logger.warning("ModelsLab TTS failed: %s. Falling back to Gemini...", e)
+            log_api_error(f"ModelsLab TTS failed: {e}")
+            provider = "gemini"
+
     if provider == "gemini":
         try:
             from google import genai

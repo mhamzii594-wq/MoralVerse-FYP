@@ -11,32 +11,69 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <link rel="stylesheet" href="/static/css/professional.css">
 </head>
-<body>
+<body class="page-enter">
   <nav class="navbar navbar-pro navbar-expand-lg sticky-top">
     <div class="container">
       <span class="navbar-brand-pro d-inline-flex align-items-center gap-2">
-        <i class="bi bi-sparkles"></i>
-        MoralVerse.AI
+        <i class="bi bi-stars"></i> MoralVerse.AI
       </span>
-      <div class="navbar-nav ms-auto">
-        <a class="nav-link fw-semibold" href="{% url 'home' %}" style="color: var(--text-dark);">Home</a>
-        <a class="nav-link fw-semibold" href="{% url 'story_preview' story_request.id %}" style="color: var(--text-dark);">← Back</a>
+      <div class="navbar-nav ms-auto gap-1 align-items-center">
+        <a class="nav-link" href="{% url 'home' %}"><i class="bi bi-house me-1"></i>Home</a>
+        <a class="nav-link" href="{% url 'story_preview' story_request.id %}"><i class="bi bi-arrow-left me-1"></i>Back to Story</a>
         {% if user.is_authenticated %}
-          <a class="nav-link fw-semibold" href="{% url 'user_dashboard' %}" style="color: var(--text-dark);">My Dashboard</a>
-          <a class="nav-link fw-semibold" href="{% url 'logout' %}" style="color: var(--text-dark);">Logout</a>
-        {% endif %}
-        {% if user.is_staff %}
-          <a class="nav-link fw-semibold" href="{% url 'admin_dashboard' %}" style="color: var(--text-dark);">Admin</a>
+          <a class="nav-link" href="{% url 'user_dashboard' %}"><i class="bi bi-grid me-1"></i>Dashboard</a>
+          {% if user.is_staff %}
+            <a class="nav-link" href="{% url 'admin_dashboard' %}"><i class="bi bi-shield me-1"></i>Admin</a>
+          {% endif %}
+          <div class="account-menu">
+            <button class="account-avatar-btn" id="account-avatar-btn" type="button" title="{{ user.username }}">
+              <div class="account-avatar">{{ user.username|slice:":2"|upper }}</div>
+            </button>
+            <div class="account-dropdown" id="account-dropdown" style="display:none;">
+              <div class="account-dropdown-header">
+                <div class="account-avatar account-avatar--lg">{{ user.username|slice:":2"|upper }}</div>
+                <div class="account-dropdown-header-text">
+                  <div class="acct-username">{{ user.username }}</div>
+                  <div class="acct-email">{{ user.email }}</div>
+                </div>
+              </div>
+              <div class="account-dropdown-nav">
+                <a href="{% url 'home' %}" class="account-dropdown-item"><i class="bi bi-house"></i>Home</a>
+                <a href="{% url 'user_dashboard' %}" class="account-dropdown-item"><i class="bi bi-grid"></i>My Stories</a>
+                <a href="{% url 'account_settings' %}" class="account-dropdown-item"><i class="bi bi-gear"></i>Account Settings</a>
+              </div>
+              <div class="account-dropdown-divider"></div>
+              <div class="account-dropdown-nav">
+                <a href="{% url 'logout' %}" class="account-dropdown-item account-dropdown-item--danger"><i class="bi bi-box-arrow-right"></i>Logout</a>
+              </div>
+            </div>
+          </div>
         {% endif %}
       </div>
     </div>
   </nav>
 
+  <!-- Breadcrumb -->
+  <div class="border-bottom" style="background:var(--bg-white);">
+    <div class="container py-2">
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0 text-small">
+          <li class="breadcrumb-item"><a href="{% url 'home' %}" class="text-decoration-none">Home</a></li>
+          {% if user.is_authenticated %}
+          <li class="breadcrumb-item"><a href="{% url 'user_dashboard' %}" class="text-decoration-none">Dashboard</a></li>
+          {% endif %}
+          <li class="breadcrumb-item"><a href="{% url 'story_preview' story_request.id %}" class="text-decoration-none">Story Preview</a></li>
+          <li class="breadcrumb-item active">Video</li>
+        </ol>
+      </nav>
+    </div>
+  </div>
+
   <main class="container my-5">
     <div class="card-pro mb-4">
       <div class="text-center mb-4">
         <h2 class="mb-2">{{ story_request.title }}</h2>
-        <p class="text-muted">Video is ready for <strong>{{ story_request.child_name }}</strong>! 🎉</p>
+        <p class="text-muted-pro">Video is ready for <strong>{{ story_request.child_name }}</strong>! <i class="bi bi-stars text-warning"></i></p>
       </div>
 
       <div class="row g-4">
@@ -53,11 +90,11 @@
           <div class="d-flex gap-3 flex-wrap">
             {% if user.is_authenticated %}
               <a href="/media/{{ video_path }}" download class="btn btn-pro">
-                Download Video (MP4)
+                <i class="bi bi-download me-2"></i>Download Video (MP4)
               </a>
               {% if subtitle_path %}
-                <a href="/media/{{ subtitle_path }}" download class="btn btn-pro-secondary">
-                  Download Subtitles (SRT)
+                <a href="/media/{{ subtitle_path }}" download class="btn btn-pro btn-pro--secondary">
+                  <i class="bi bi-file-text me-2"></i>Download Subtitles (SRT)
                 </a>
               {% endif %}
             {% else %}
@@ -65,8 +102,8 @@
                 <strong>Login Required:</strong> Please <a href="{% url 'login' %}?next={% url 'video_ready' story_request.id %}" class="text-decoration-none fw-semibold">login</a> to download videos.
               </div>
             {% endif %}
-            <a href="{% url 'story_preview' story_request.id %}" class="btn btn-pro-secondary">
-              ← Back to Story
+            <a href="{% url 'story_preview' story_request.id %}" class="btn btn-pro btn-pro--secondary">
+              <i class="bi bi-arrow-left me-2"></i>Back to Story
             </a>
           </div>
         </div>
@@ -95,11 +132,11 @@
             
             <h6 class="mb-3 fw-bold">Features</h6>
             <ul class="list-unstyled small text-muted">
-              <li class="mb-2">✓ Scene images with avatar</li>
-              <li class="mb-2">✓ Text-to-speech audio</li>
-              <li class="mb-2">✓ Urdu + English subtitles</li>
-              <li class="mb-2">✓ Smooth transitions</li>
-              <li class="mb-2">✓ Background music</li>
+              <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Scene images with avatar</li>
+              <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Text-to-speech audio</li>
+              <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Urdu + English subtitles</li>
+              <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Smooth transitions</li>
+              <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Background music</li>
             </ul>
             
             {% if not user.is_authenticated %}
@@ -172,6 +209,15 @@
       document.addEventListener("click", (e) => {
         if (!e.target.closest(".theme-switcher")) panel.style.display = "none";
       });
+    })();
+
+    // Account menu dropdown
+    (function () {
+      const btn = document.getElementById("account-avatar-btn");
+      const dd = document.getElementById("account-dropdown");
+      if (!btn || !dd) return;
+      btn.addEventListener("click", e => { e.stopPropagation(); dd.style.display = dd.style.display === "none" ? "block" : "none"; });
+      document.addEventListener("click", () => { if (dd) dd.style.display = "none"; });
     })();
   </script>
 </body>

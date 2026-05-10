@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <link rel="stylesheet" href="/static/css/professional.css">
   <style>
     .landing-hero {
@@ -21,127 +22,200 @@
     .landing-hero::before {
       content: '';
       position: absolute;
-      top: -50%;
-      right: -50%;
-      width: 200%;
-      height: 200%;
+      top: -50%; right: -50%;
+      width: 200%; height: 200%;
       background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
       animation: rotate 20s linear infinite;
     }
-    .feature-card {
-      padding: 2rem;
-      height: 100%;
-      transition: all 0.3s ease;
+    .feature-card { padding: 2rem; height: 100%; }
+    .feature-card:hover { transform: translateY(-10px); }
+    .feature-icon-wrap {
+      width: 64px; height: 64px;
+      border-radius: 16px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.75rem;
+      margin-bottom: 1.25rem;
     }
-    .feature-card:hover {
-      transform: translateY(-10px);
+    .hero-icon-wrap {
+      width: 200px; height: 200px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.12);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 6rem; color: white;
+      margin: 0 auto;
+      animation: float 4s ease-in-out infinite;
+      border: 2px solid rgba(255,255,255,0.25);
+      backdrop-filter: blur(8px);
     }
-    .cta-section {
-      background: var(--bg-light);
-      padding: 5rem 0;
-    }
+    .cta-section { background: var(--bg-light); padding: 5rem 0; }
   </style>
 </head>
-<body>
+<body class="page-enter">
+
   <!-- Navbar -->
   <nav class="navbar navbar-pro navbar-expand-lg sticky-top">
     <div class="container">
-      <span class="navbar-brand-pro">MoralVerse.AI</span>
-      <div class="navbar-nav ms-auto">
-        <a class="nav-link fw-semibold" href="{% url 'login' %}" style="color: var(--text-dark);">Login</a>
-        <a class="nav-link fw-semibold" href="{% url 'signup' %}" style="color: var(--text-dark);">
-          <span class="btn-pro btn-sm">Sign Up</span>
-        </a>
+      <span class="navbar-brand-pro d-inline-flex align-items-center gap-2">
+        <i class="bi bi-stars"></i> MoralVerse.AI
+      </span>
+      <div class="navbar-nav ms-auto gap-1 align-items-center">
+        {% if user.is_authenticated %}
+          <a class="nav-link" href="{% url 'home' %}"><i class="bi bi-plus-circle me-1"></i>Create Story</a>
+          <a class="nav-link" href="{% url 'user_dashboard' %}"><i class="bi bi-grid me-1"></i>Dashboard</a>
+          {% if user.is_staff %}
+            <a class="nav-link" href="{% url 'admin_dashboard' %}"><i class="bi bi-shield me-1"></i>Admin</a>
+          {% endif %}
+          <div class="account-menu">
+            <button class="account-avatar-btn" id="account-avatar-btn" type="button" title="{{ user.username }}">
+              <div class="account-avatar">{{ user.username|slice:":2"|upper }}</div>
+            </button>
+            <div class="account-dropdown" id="account-dropdown" style="display:none;">
+              <div class="account-dropdown-header">
+                <div class="account-avatar account-avatar--lg">{{ user.username|slice:":2"|upper }}</div>
+                <div class="account-dropdown-header-text">
+                  <div class="acct-username">{{ user.username }}</div>
+                  <div class="acct-email">{{ user.email }}</div>
+                </div>
+              </div>
+              <div class="account-dropdown-nav">
+                <a href="{% url 'home' %}" class="account-dropdown-item"><i class="bi bi-house"></i>Home</a>
+                <a href="{% url 'user_dashboard' %}" class="account-dropdown-item"><i class="bi bi-grid"></i>My Stories</a>
+                <a href="{% url 'account_settings' %}" class="account-dropdown-item"><i class="bi bi-gear"></i>Account Settings</a>
+              </div>
+              <div class="account-dropdown-divider"></div>
+              <div class="account-dropdown-nav">
+                <a href="{% url 'logout' %}" class="account-dropdown-item account-dropdown-item--danger"><i class="bi bi-box-arrow-right"></i>Logout</a>
+              </div>
+            </div>
+          </div>
+        {% else %}
+          <a class="nav-link" href="{% url 'login' %}">
+            <i class="bi bi-box-arrow-in-right me-1"></i>Login
+          </a>
+          <a href="{% url 'signup' %}" class="btn btn-pro btn-pro--sm ms-2">
+            <i class="bi bi-person-plus me-1"></i>Sign Up
+          </a>
+        {% endif %}
       </div>
     </div>
   </nav>
 
-  <!-- Hero Section -->
+  <!-- Hero -->
   <section class="landing-hero">
     <div class="container position-relative">
       <div class="row align-items-center">
         <div class="col-lg-6">
+          <div class="kicker mb-4">
+            <i class="bi bi-lightning-charge-fill"></i> AI-Powered Storytelling
+          </div>
           <h1 class="hero-title-pro mb-4">Create Magical Stories with AI</h1>
           <p class="hero-subtitle-pro mb-5">
-            Transform ideas into interactive stories with images, audio, and videos. 
+            Transform ideas into interactive stories with images, audio, and videos.
             Perfect for children's moral education and creative storytelling.
           </p>
           <div class="d-flex gap-3 flex-wrap">
-            <a href="{% url 'signup' %}" class="btn btn-pro btn-lg">Get Started Free</a>
-            <a href="{% url 'login' %}" class="btn btn-pro-secondary btn-lg">Login</a>
+            <a href="{% url 'signup' %}" class="btn btn-pro btn-pro--lg">
+              <i class="bi bi-rocket-takeoff me-2"></i>Get Started Free
+            </a>
+            <a href="{% url 'login' %}" class="btn btn-pro btn-pro--secondary btn-pro--lg">
+              <i class="bi bi-box-arrow-in-right me-2"></i>Login
+            </a>
           </div>
         </div>
-        <div class="col-lg-6 text-center">
-          <div class="p-5">
-            <div class="feature-icon" style="font-size: 8rem; opacity: 0.3;">📚</div>
+        <div class="col-lg-6 text-center mt-5 mt-lg-0">
+          <div class="hero-icon-wrap">
+            <i class="bi bi-book-half"></i>
           </div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Features Section -->
-  <section class="py-5">
+  <!-- Features -->
+  <section class="py-5 fade-in-up">
     <div class="container">
       <div class="text-center mb-5">
-        <h2 class="section-title">Powerful Features</h2>
-        <p class="text-muted">Everything you need to create amazing stories</p>
+        <h2 class="mb-2">Powerful Features</h2>
+        <p class="text-muted-pro">Everything you need to create amazing stories</p>
       </div>
       <div class="row g-4">
+
         <div class="col-md-4">
           <div class="card-pro feature-card">
-            <div class="mb-3" style="font-size: 3rem;">🤖</div>
+            <div class="feature-icon-wrap" style="background:rgba(99,102,241,0.12);color:var(--primary);">
+              <i class="bi bi-robot"></i>
+            </div>
             <h4 class="mb-3">AI-Powered Generation</h4>
-            <p class="text-muted">Create unique stories using advanced AI models from OpenAI, Gemini, and more.</p>
+            <p class="text-muted-pro">Create unique stories using advanced AI models from Gemini, OpenAI, and more.</p>
           </div>
         </div>
+
         <div class="col-md-4">
           <div class="card-pro feature-card">
-            <div class="mb-3" style="font-size: 3rem;">🎨</div>
+            <div class="feature-icon-wrap" style="background:rgba(236,72,153,0.12);color:var(--secondary);">
+              <i class="bi bi-palette-fill"></i>
+            </div>
             <h4 class="mb-3">Image Generation</h4>
-            <p class="text-muted">Generate beautiful scene images with avatar integration using DALL-E and FLUX.</p>
+            <p class="text-muted-pro">Generate beautiful scene images with avatar integration using DALL-E and FLUX.</p>
           </div>
         </div>
+
         <div class="col-md-4">
           <div class="card-pro feature-card">
-            <div class="mb-3" style="font-size: 3rem;">🎬</div>
+            <div class="feature-icon-wrap" style="background:rgba(245,158,11,0.12);color:var(--accent);">
+              <i class="bi bi-camera-video-fill"></i>
+            </div>
             <h4 class="mb-3">Video Creation</h4>
-            <p class="text-muted">Assemble complete videos with audio, subtitles, and smooth transitions.</p>
+            <p class="text-muted-pro">Assemble complete videos with audio, subtitles, and smooth transitions.</p>
           </div>
         </div>
+
         <div class="col-md-4">
           <div class="card-pro feature-card">
-            <div class="mb-3" style="font-size: 3rem;">🌍</div>
+            <div class="feature-icon-wrap" style="background:rgba(16,185,129,0.12);color:var(--success);">
+              <i class="bi bi-translate"></i>
+            </div>
             <h4 class="mb-3">Bilingual Support</h4>
-            <p class="text-muted">Automatic Urdu and English subtitle generation for global reach.</p>
+            <p class="text-muted-pro">Automatic Urdu and English subtitle generation for global reach.</p>
           </div>
         </div>
+
         <div class="col-md-4">
           <div class="card-pro feature-card">
-            <div class="mb-3" style="font-size: 3rem;">🎯</div>
+            <div class="feature-icon-wrap" style="background:rgba(59,130,246,0.12);color:var(--info);">
+              <i class="bi bi-diagram-3-fill"></i>
+            </div>
             <h4 class="mb-3">Interactive Decisions</h4>
-            <p class="text-muted">Create branching stories with decision points that affect the narrative.</p>
+            <p class="text-muted-pro">Create branching stories with decision points that affect the narrative.</p>
           </div>
         </div>
+
         <div class="col-md-4">
           <div class="card-pro feature-card">
-            <div class="mb-3" style="font-size: 3rem;">📊</div>
+            <div class="feature-icon-wrap" style="background:rgba(139,92,246,0.12);color:#8b5cf6;">
+              <i class="bi bi-bar-chart-fill"></i>
+            </div>
             <h4 class="mb-3">Analytics Dashboard</h4>
-            <p class="text-muted">Track your stories, view statistics, and manage your content.</p>
+            <p class="text-muted-pro">Track your stories, view statistics, and manage your content easily.</p>
           </div>
         </div>
+
       </div>
     </div>
   </section>
 
-  <!-- CTA Section -->
+  <!-- CTA -->
   <section class="cta-section">
     <div class="container text-center">
-      <h2 class="section-title mb-4">Ready to Create Your First Story?</h2>
-      <p class="text-muted mb-5">Join thousands of users creating magical stories with AI</p>
+      <h2 class="mb-3">Ready to Create Your First Story?</h2>
+      <p class="text-muted-pro mb-5">Join thousands of users creating magical stories with AI</p>
       <div class="d-flex gap-3 justify-content-center flex-wrap">
-        <a href="{% url 'signup' %}" class="btn btn-pro btn-lg">Sign Up Free</a>
-        <a href="{% url 'admin_login' %}" class="btn btn-pro-secondary btn-lg">Admin Login</a>
+        <a href="{% url 'signup' %}" class="btn btn-pro btn-pro--lg">
+          <i class="bi bi-person-plus me-2"></i>Sign Up Free
+        </a>
+        <a href="{% url 'admin_login' %}" class="btn btn-pro btn-pro--ghost btn-pro--lg">
+          <i class="bi bi-shield-lock me-2"></i>Admin Login
+        </a>
       </div>
     </div>
   </section>
@@ -149,18 +223,23 @@
   <!-- Footer -->
   <footer class="py-4 border-top">
     <div class="container text-center">
-      <p class="text-muted mb-0">&copy; 2025 MoralVerse.AI - AI-Powered Storytelling Platform</p>
+      <p class="text-muted-pro mb-0">
+        <i class="bi bi-stars me-1"></i>&copy; 2025 MoralVerse.AI — AI-Powered Storytelling Platform
+      </p>
     </div>
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
   <div class="theme-switcher">
-    <button class="theme-toggle-btn" id="theme-toggle-btn" type="button">Theme</button>
+    <button class="theme-toggle-btn" id="theme-toggle-btn" type="button">
+      <i class="bi bi-palette me-1"></i>Theme
+    </button>
     <div class="theme-panel" id="theme-panel" style="display:none;">
-      <button class="theme-option" data-theme="light" type="button">Light</button>
-      <button class="theme-option" data-theme="dark" type="button">Dark</button>
-      <button class="theme-option" data-theme="ocean" type="button">Ocean</button>
-      <button class="theme-option" data-theme="sunset" type="button">Sunset</button>
+      <button class="theme-option" data-theme="light" type="button"><i class="bi bi-sun me-2"></i>Light</button>
+      <button class="theme-option" data-theme="dark"  type="button"><i class="bi bi-moon me-2"></i>Dark</button>
+      <button class="theme-option" data-theme="ocean" type="button"><i class="bi bi-water me-2"></i>Ocean</button>
+      <button class="theme-option" data-theme="sunset" type="button"><i class="bi bi-sunset me-2"></i>Sunset</button>
     </div>
   </div>
   <script>
@@ -170,23 +249,25 @@
       const panel = document.getElementById("theme-panel");
       const toggle = document.getElementById("theme-toggle-btn");
       const options = document.querySelectorAll(".theme-option");
-
-      function applyTheme(theme) {
-        root.setAttribute("data-theme", theme);
-        localStorage.setItem("mv_theme", theme);
-        options.forEach(btn => btn.classList.toggle("active", btn.dataset.theme === theme));
+      function applyTheme(t) {
+        root.setAttribute("data-theme", t);
+        localStorage.setItem("mv_theme", t);
+        options.forEach(b => b.classList.toggle("active", b.dataset.theme === t));
       }
-
       applyTheme(saved);
-      toggle.addEventListener("click", () => {
-        panel.style.display = panel.style.display === "none" ? "block" : "none";
-      });
-      options.forEach(btn => btn.addEventListener("click", () => applyTheme(btn.dataset.theme)));
-      document.addEventListener("click", (e) => {
-        if (!e.target.closest(".theme-switcher")) panel.style.display = "none";
-      });
+      toggle.addEventListener("click", () => { panel.style.display = panel.style.display === "none" ? "block" : "none"; });
+      options.forEach(b => b.addEventListener("click", () => applyTheme(b.dataset.theme)));
+      document.addEventListener("click", e => { if (!e.target.closest(".theme-switcher")) panel.style.display = "none"; });
+    })();
+
+    // Account menu dropdown
+    (function () {
+      const btn = document.getElementById("account-avatar-btn");
+      const dd = document.getElementById("account-dropdown");
+      if (!btn || !dd) return;
+      btn.addEventListener("click", e => { e.stopPropagation(); dd.style.display = dd.style.display === "none" ? "block" : "none"; });
+      document.addEventListener("click", () => { if (dd) dd.style.display = "none"; });
     })();
   </script>
 </body>
 </html>
-

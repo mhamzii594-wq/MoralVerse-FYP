@@ -30,6 +30,8 @@ class StoryRequest(models.Model):
     moral_theme = models.CharField(max_length=100)
     prompt = models.TextField(blank=True)
     avatar_path = models.CharField(max_length=500, blank=True, null=True)
+    # Ghibli-converted version of the avatar (used for scene img2img consistency)
+    ghibli_avatar_path = models.CharField(max_length=500, blank=True, null=True)
 
     # SRDS requires language selection (Urdu/English).
     # Stored as 'en' or 'ur'.
@@ -103,10 +105,10 @@ class StoryScene(models.Model):
 
 
 class EmailVerification(models.Model):
-    """Email verification tokens for user signup."""
+    """Email verification OTP for user signup."""
 
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-    token = models.CharField(max_length=100, unique=True)
+    otp = models.CharField(max_length=6)  # 6-digit OTP
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
     is_verified = models.BooleanField(default=False)
@@ -119,20 +121,32 @@ class EmailVerification(models.Model):
         return f"Email verification for {self.user.username}"
 
     def is_expired(self):
-        """Check if verification token has expired."""
+        """Check if OTP has expired."""
         return timezone.now() > self.expires_at
 
-    def generate_token(self):
-        """Generate secure random token and set expiry."""
-        self.token = secrets.token_urlsafe(32)
-        self.expires_at = timezone.now() + timedelta(hours=24)  # 24 hour expiry
+    def generate_otp(self):
+        """Generate 6-digit OTP and set expiry."""
+        import random
+        self.otp = str(random.randint(100000, 999999))
+        self.expires_at = timezone.now() + timedelta(minutes=10)  # 10 minute expiry
         self.save()
+
+    def verify_otp(self, entered_otp):
+        """Verify entered OTP."""
+        if self.is_expired():
+            return False, "OTP has expired"
+        if self.otp != entered_otp:
+            return False, "Invalid OTP"
+        self.is_verified = True
+        self.save()
+        return True, "OTP verified successfully"
 
     @classmethod
     def create_verification(cls, user):
         """Create and return a new verification instance."""
-        verification = cls.objects.create(user=user)
-        verification.generate_token()
+        verification = cls(user=user)
+        verification.generate_otp()
+        verification.save()
         return verification
 
 
