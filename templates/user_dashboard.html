@@ -107,13 +107,15 @@
     <div class="story-grid" id="story-grid">
       {% for story in stories %}
       <div class="story-dash-card" data-reveal data-reveal-delay="{{ forloop.counter|add:0 }}">
-        {% if story.scenes.first.image_path %}
+        {% with first_scene=story.scenes.all|first %}
+        {% if first_scene.image_path %}
           <div style="width:100%;height:160px;overflow:hidden;flex-shrink:0;">
-            <img src="/media/{{ story.scenes.first.image_path }}" alt="{{ story.title }}" class="story-dash-thumb" style="width:100%;height:100%;object-fit:cover;display:block;">
+            <img src="/media/{{ first_scene.image_path }}" alt="{{ story.title }}" class="story-dash-thumb" style="width:100%;height:100%;object-fit:cover;display:block;">
           </div>
         {% else %}
           <div class="story-dash-thumb-placeholder">📖</div>
         {% endif %}
+        {% endwith %}
         <div class="story-dash-body">
           <div class="story-dash-title">{{ story.title|default:"Untitled Story" }}</div>
           <div class="story-dash-meta">

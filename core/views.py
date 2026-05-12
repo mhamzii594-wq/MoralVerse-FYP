@@ -579,9 +579,12 @@ def admin_dashboard(request: HttpRequest) -> HttpResponse:
 @ensure_csrf_cookie
 def user_dashboard(request: HttpRequest) -> HttpResponse:
     """User dashboard showing their stories."""
-    from django.db.models import Count, Q
+    from django.db.models import Count, Q, Prefetch
+    from core.models import StoryScene
     user_stories = list(
-        StoryRequest.objects.filter(user=request.user).order_by('-created_at')
+        StoryRequest.objects.filter(user=request.user)
+        .prefetch_related(Prefetch('scenes', queryset=StoryScene.objects.order_by('scene_id')))
+        .order_by('-created_at')
     )
     agg = StoryRequest.objects.filter(user=request.user).aggregate(
         total=Count('id'),
