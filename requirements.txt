@@ -27,6 +27,9 @@ mutagen>=1.46.0
 # HTTP Requests
 requests>=2.31.0
 
+# Transactional email (Resend via django-anymail — bypasses blocked SMTP ports)
+django-anymail[resend]>=10.0
+
 # Background Tasks (Optional)
 # Django-Q for async task processing (optional).
 # Note: `django-q>=1.4.1` doesn't exist on PyPI; keep this optional to avoid install failures.

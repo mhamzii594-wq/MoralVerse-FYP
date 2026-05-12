@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "anymail",
     "core",
 ]
 
@@ -71,10 +72,7 @@ WSGI_APPLICATION = "moralverse.wsgi.application"
 
 _db_config = dj_database_url.config(
     default=f'sqlite:///{BASE_DIR / "db.sqlite3"}',
-    # conn_max_age=0 required for Supabase transaction pooler (port 6543):
-    # the pooler reclaims connections after each transaction; holding them
-    # for 600s causes "SSL connection unexpectedly closed" errors.
-    conn_max_age=0,
+    conn_max_age=30,
     conn_health_checks=True,
 )
 # Enforce SSL for PostgreSQL (Supabase requires it). SQLite ignores this.
@@ -90,6 +88,11 @@ EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").lower() == "true"
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@moralverse.ai")
+
+# Anymail (Resend) — used when EMAIL_BACKEND=anymail.backends.resend.EmailBackend
+ANYMAIL = {
+    "RESEND_API_KEY": os.getenv("RESEND_API_KEY", ""),
+}
 
 # Site URL for email links
 SITE_URL = os.getenv("SITE_URL", "http://127.0.0.1:8000")
