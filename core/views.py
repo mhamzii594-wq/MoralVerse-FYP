@@ -208,10 +208,17 @@ def story_preview(request: HttpRequest, story_id: int) -> HttpResponse:
     """Preview page showing story JSON, generated images, and audio playback."""
     story_request = get_object_or_404(StoryRequest, id=story_id)
     
-    # If status is failed, reset to pending to allow retry
+    # Reset stuck/terminal states so the page isn't permanently broken
     if story_request.status == 'failed':
         story_request.status = 'pending'
         story_request.save()
+    elif story_request.status == 'generating':
+        # If stuck in 'generating' for > 10 min (e.g. worker was killed), self-heal
+        from django.utils import timezone
+        from datetime import timedelta
+        if story_request.updated_at and (timezone.now() - story_request.updated_at) > timedelta(minutes=10):
+            StoryRequest.objects.filter(pk=story_request.pk).update(status='pending')
+            story_request.status = 'pending'
 
     # Generate story if not already generated
     if not story_request.story_json or not story_request.story_json.get('scenes'):
