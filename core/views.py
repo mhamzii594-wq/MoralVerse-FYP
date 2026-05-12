@@ -558,36 +558,20 @@ def decision_interactive_api(request: HttpRequest, story_id: int) -> JsonRespons
 def admin_dashboard(request: HttpRequest) -> HttpResponse:
     """Admin dashboard to view all story requests, statistics, etc."""
     from django.db.models import Count, Q, Sum
-    
-    # Get statistics
-    total_stories = StoryRequest.objects.count()
-    completed_stories = StoryRequest.objects.filter(status='completed').count()
-    pending_stories = StoryRequest.objects.filter(status='pending').count()
-    generating_stories = StoryRequest.objects.filter(status='generating').count()
-    failed_stories = StoryRequest.objects.filter(status='failed').count()
-    
-    # Get recent stories
-    recent_stories = StoryRequest.objects.all()[:50]
-    
-    # Get stories with videos
-    stories_with_videos = StoryRequest.objects.exclude(video_path='').count()
-    
-    # API call statistics
-    total_api_calls = StoryRequest.objects.aggregate(
-        total=Sum('api_calls_count')
-    )['total'] or 0
-    
+    agg = StoryRequest.objects.aggregate(
+        total_stories=Count('id'),
+        completed_stories=Count('id', filter=Q(status='completed')),
+        pending_stories=Count('id', filter=Q(status='pending')),
+        generating_stories=Count('id', filter=Q(status='generating')),
+        failed_stories=Count('id', filter=Q(status='failed')),
+        stories_with_videos=Count('id', filter=~Q(video_path='')),
+        total_api_calls=Sum('api_calls_count'),
+    )
     context = {
-        "total_stories": total_stories,
-        "completed_stories": completed_stories,
-        "pending_stories": pending_stories,
-        "generating_stories": generating_stories,
-        "failed_stories": failed_stories,
-        "stories_with_videos": stories_with_videos,
-        "total_api_calls": total_api_calls,
-        "recent_stories": recent_stories,
+        **agg,
+        "total_api_calls": agg['total_api_calls'] or 0,
+        "recent_stories": list(StoryRequest.objects.select_related('user').order_by('-created_at')[:50]),
     }
-    
     return render(request, "admin_dashboard.html", context)
 
 
@@ -595,16 +579,22 @@ def admin_dashboard(request: HttpRequest) -> HttpResponse:
 @ensure_csrf_cookie
 def user_dashboard(request: HttpRequest) -> HttpResponse:
     """User dashboard showing their stories."""
-    user_stories = StoryRequest.objects.filter(user=request.user).order_by('-created_at')
-    
+    from django.db.models import Count, Q
+    user_stories = list(
+        StoryRequest.objects.filter(user=request.user).order_by('-created_at')
+    )
+    agg = StoryRequest.objects.filter(user=request.user).aggregate(
+        total=Count('id'),
+        completed=Count('id', filter=Q(status='completed')),
+        with_video=Count('id', filter=~Q(video_path='')),
+    )
     context = {
         "user": request.user,
         "stories": user_stories,
-        "total_stories": user_stories.count(),
-        "completed_stories": user_stories.filter(status='completed').count(),
-        "videos_count": user_stories.exclude(video_path='').count(),
+        "total_stories": agg['total'],
+        "completed_stories": agg['completed'],
+        "videos_count": agg['with_video'],
     }
-    
     return render(request, "user_dashboard.html", context)
 
 
