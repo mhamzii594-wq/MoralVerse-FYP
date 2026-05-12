@@ -395,22 +395,29 @@ def generate_video_api(request: HttpRequest, story_id: int) -> JsonResponse:
         story_request.error_message = ''
         story_request.save()
 
-        # Try async if Django-Q is available
+        # Try async if Django-Q is available, else use a background thread
         try:
             from django_q.tasks import async_task
             async_task(generate_story_video_async, story_id)
-            return JsonResponse({
-                "status": "generating",
-                "message": "Video generation started in background"
-            })
         except ImportError:
-            # Synchronous fallback (blocks until done)
-            video_path = generate_story_video(story_id)
-            return JsonResponse({
-                "status": "completed",
-                "video_path": video_path,
-                "message": "Video generated successfully"
-            })
+            import threading
+            def _bg_generate(sid):
+                try:
+                    generate_story_video(sid)
+                except Exception as exc:
+                    logger.exception("Background video generation failed: %s", exc)
+                    try:
+                        from core.models import StoryRequest as SR
+                        SR.objects.filter(id=sid).update(
+                            status='failed', error_message=str(exc)
+                        )
+                    except Exception:
+                        pass
+            threading.Thread(target=_bg_generate, args=(story_id,), daemon=True).start()
+        return JsonResponse({
+            "status": "generating",
+            "message": "Video generation started in background"
+        })
     except Exception as e:
         logger.exception(f"Video generation failed: {e}")
         story_request.mark_failed(str(e))
