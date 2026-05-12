@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+import dj_database_url
 from dotenv import load_dotenv
 
 # Load environment variables from .env if present
@@ -65,12 +66,21 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "moralverse.wsgi.application"
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
-    }
-}
+# Database
+# https://docs.djangoproject.com/en/5.0/ref/settings/#databases
+
+_db_config = dj_database_url.config(
+    default=f'sqlite:///{BASE_DIR / "db.sqlite3"}',
+    # conn_max_age=0 required for Supabase transaction pooler (port 6543):
+    # the pooler reclaims connections after each transaction; holding them
+    # for 600s causes "SSL connection unexpectedly closed" errors.
+    conn_max_age=0,
+    conn_health_checks=True,
+)
+# Enforce SSL for PostgreSQL (Supabase requires it). SQLite ignores this.
+if _db_config.get('ENGINE') == 'django.db.backends.postgresql':
+    _db_config.setdefault('OPTIONS', {})['sslmode'] = 'require'
+DATABASES = {'default': _db_config}
 
 # Email Configuration
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")

@@ -1268,9 +1268,8 @@ def generate_scene_image(
 
     Priority chain when avatar is present (highest → lowest quality):
       1. ToonYou + IP-Adapter Plus Face — chibi cartoon + face identity from avatar
-      2. FaceGen          — face extraction into chibi scene, base64
-      3. FLUX Kontext Dev — style-transfer img2img, URL
-      4. FLUX text2img    — no avatar, text-only
+      2. FLUX Kontext Dev — style-transfer img2img, URL
+      3. FLUX text2img    — no avatar, text-only
 
     Args:
         prompt: Assembled image prompt (anchor + scene fields + style tag)
@@ -1278,8 +1277,7 @@ def generate_scene_image(
         image_provider: Optional provider override
         scene_text: Raw story text (informational only)
         seed: Shared seed for all 6 scenes — ensures colour/style consistency
-        character_anchor: Character description — used to strip face traits from
-            FaceGen prompt (FaceGen gets face appearance from the photo itself)
+        character_anchor: Character description injected into the scene prompt
 
     Returns:
         Relative path to generated image under MEDIA_ROOT (e.g., "images/scene_123.jpg")
@@ -1307,22 +1305,9 @@ def generate_scene_image(
                         ty_opts["seed"] = seed
                     return _generate_modelslab_toonyou(prompt, ty_opts)
                 except Exception as ty_err:
-                    logger.warning("ToonYou failed, falling back to FaceGen: %s", ty_err)
+                    logger.warning("ToonYou failed, falling back to FLUX Kontext img2img: %s", ty_err)
 
-                # ── Tier 2: FaceGen ──────────────────────────────────────────
-                # Injects real face from photo into chibi scene via base64.
-                # Strip hair/eye/skin from anchor — face_gen gets those from photo.
-                try:
-                    logger.info("Scene FaceGen (chibi, base64 avatar): %s", avatar_path)
-                    fg_prompt = _build_facegen_prompt(prompt, character_anchor) if character_anchor else prompt
-                    fg_opts: Dict[str, Any] = {"face_image_b64": avatar_b64}
-                    if seed is not None:
-                        fg_opts["seed"] = seed
-                    return _generate_modelslab_facegen(fg_prompt, fg_opts)
-                except Exception as fg_err:
-                    logger.warning("FaceGen failed, falling back to FLUX Kontext img2img: %s", fg_err)
-
-                # ── Tier 3: FLUX Kontext Dev img2img ────────────────────────
+                # ── Tier 2: FLUX Kontext Dev img2img ────────────────────────
                 # avatar_path used as cache key — upload happens once, all scenes reuse URL.
                 logger.info("Scene img2img with FLUX Kontext Dev (base64 avatar): %s", avatar_path)
                 i2i_opts: Dict[str, Any] = {
