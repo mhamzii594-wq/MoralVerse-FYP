@@ -384,7 +384,11 @@ def generate_video_api(request: HttpRequest, story_id: int) -> JsonResponse:
             return JsonResponse({"status": "completed", "video_path": story_request.video_path})
         if story_request.status == 'failed':
             return JsonResponse({"status": "failed", "error": story_request.error_message})
-        return JsonResponse({"status": story_request.status})
+        return JsonResponse({
+            "status": story_request.status,
+            "progress": story_request.video_progress,
+            "video_type": story_request.video_type,
+        })
 
     # ── Trigger mode ─────────────────────────────────────────────────────────
     if story_request.status == 'generating':
@@ -397,34 +401,61 @@ def generate_video_api(request: HttpRequest, story_id: int) -> JsonResponse:
             "message": "Video already generated"
         })
 
+    video_type = payload.get("video_type", "slideshow")
+    if video_type not in ("slideshow", "cinematic"):
+        video_type = "slideshow"
+
     try:
         story_request.status = 'generating'
         story_request.error_message = ''
+        story_request.video_type = video_type
+        story_request.video_progress = 0
+        story_request.video_path = ''
         story_request.save()
 
-        # Try async if Django-Q is available, else use a background thread
-        try:
-            from django_q.tasks import async_task
-            async_task(generate_story_video_async, story_id)
-        except ImportError:
-            import threading
-            def _bg_generate(sid):
+        import threading
+        from core.services.pipeline import generate_story_video, generate_story_video_cinematic
+
+        if video_type == "cinematic":
+            def _bg_cinematic(sid):
                 try:
-                    generate_story_video(sid)
+                    generate_story_video_cinematic(sid)
                 except Exception as exc:
-                    logger.exception("Background video generation failed: %s", exc)
+                    logger.exception("Cinematic video generation failed: %s", exc)
                     try:
                         from core.models import StoryRequest as SR
-                        SR.objects.filter(id=sid).update(
-                            status='failed', error_message=str(exc)
-                        )
+                        SR.objects.filter(id=sid).update(status='failed', error_message=str(exc))
                     except Exception:
                         pass
-            threading.Thread(target=_bg_generate, args=(story_id,), daemon=True).start()
-        return JsonResponse({
-            "status": "generating",
-            "message": "Video generation started in background"
-        })
+            threading.Thread(target=_bg_cinematic, args=(story_id,), daemon=True).start()
+            return JsonResponse({
+                "status": "generating",
+                "video_type": "cinematic",
+                "message": "Cinematic video generation started — this takes 3–5 minutes",
+            })
+        else:
+            try:
+                from django_q.tasks import async_task
+                from core.services.pipeline import generate_story_video_async
+                async_task(generate_story_video_async, story_id)
+            except ImportError:
+                def _bg_slideshow(sid):
+                    try:
+                        generate_story_video(sid)
+                    except Exception as exc:
+                        logger.exception("Slideshow video generation failed: %s", exc)
+                        try:
+                            from core.models import StoryRequest as SR
+                            SR.objects.filter(id=sid).update(status='failed', error_message=str(exc))
+                        except Exception:
+                            pass
+                threading.Thread(target=_bg_slideshow, args=(story_id,), daemon=True).start()
+            return JsonResponse({
+                "status": "generating",
+                "video_type": "slideshow",
+                "message": "Slideshow video generation started",
+            })
+
     except Exception as e:
         logger.exception(f"Video generation failed: {e}")
         story_request.mark_failed(str(e))

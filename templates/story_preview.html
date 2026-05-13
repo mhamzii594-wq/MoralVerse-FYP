@@ -13,6 +13,32 @@
     .pulse-dot { display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--primary);animation:pulse-anim 1.2s ease-in-out infinite;margin-right:8px; }
     @keyframes pulse-anim { 0%,100%{transform:scale(1);opacity:1;}50%{transform:scale(1.5);opacity:.4;} }
     #video-gen-modal { display:none; }
+
+    /* Video type selector cards */
+    .video-type-card {
+      flex: 1;
+      border: 2px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 14px 10px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, box-shadow .2s, background .2s;
+      background: #fff;
+      user-select: none;
+    }
+    .video-type-card:hover {
+      border-color: var(--primary, #6366f1);
+      box-shadow: 0 0 0 3px rgba(99,102,241,.1);
+    }
+    .video-type-card.selected {
+      border-color: var(--primary, #6366f1);
+      background: linear-gradient(135deg,#f5f3ff,#ede9fe);
+      box-shadow: 0 0 0 3px rgba(99,102,241,.15);
+    }
+    .vtc-icon  { font-size: 1.6rem; margin-bottom: 4px; }
+    .vtc-title { font-weight: 700; font-size: 0.9rem; color: #1e1b4b; margin-bottom: 2px; }
+    .vtc-desc  { font-size: 0.72rem; color: #6b7280; line-height: 1.4; }
+    .vtc-time  { color: var(--primary, #6366f1); font-weight: 600; }
   </style>
 </head>
 <body class="page-enter">
@@ -114,13 +140,32 @@
           {% endif %}
         {% elif story_request.status == 'generating' %}
           <button class="btn btn-pro w-100 mb-3" disabled id="generate-video-btn">
-            <span class="pulse-dot"></span>Generating Video…
+            <span class="pulse-dot"></span>
+            <span id="gen-type-label">
+              {% if story_request.video_type == 'cinematic' %}Generating Cinematic Video…{% else %}Generating Slideshow Video…{% endif %}
+            </span>
           </button>
-          <div class="progress-pro mb-2"><div class="progress-bar-pro" style="width:100%;"></div></div>
-          <p class="text-muted small mb-0" id="gen-status-text">Checking progress…</p>
+          <div class="progress-pro mb-2">
+            <div class="progress-bar-pro" id="gen-progress-bar" style="width:{{ story_request.video_progress }}%;"></div>
+          </div>
+          <p class="text-muted small mb-0" id="gen-status-text">Checking progress… ({{ story_request.video_progress }}%)</p>
         {% else %}
+          <!-- Video type selector -->
+          <p class="fw-semibold mb-2" style="font-size:0.85rem;">Choose video style:</p>
+          <div class="d-flex gap-2 mb-3" id="video-type-selector">
+            <div class="video-type-card selected" data-type="slideshow" onclick="selectVideoType('slideshow')">
+              <div class="vtc-icon">📽</div>
+              <div class="vtc-title">Slideshow</div>
+              <div class="vtc-desc">Static images + pan/zoom<br><span class="vtc-time">~30 sec</span></div>
+            </div>
+            <div class="video-type-card" data-type="cinematic" onclick="selectVideoType('cinematic')">
+              <div class="vtc-icon">✨</div>
+              <div class="vtc-title">Cinematic</div>
+              <div class="vtc-desc">AI-animated scenes<br><span class="vtc-time">~3–5 min</span></div>
+            </div>
+          </div>
           <button id="generate-video-btn" class="btn btn-pro w-100 mb-3">
-            <i class="bi bi-camera-video me-2"></i>Generate Final Video
+            <i class="bi bi-camera-video me-2"></i>Generate Video
           </button>
           {% if not user.is_authenticated %}
             <div class="alert-pro alert-pro--info mb-2">
@@ -448,6 +493,24 @@ function showGenModal() {
   setTimeout(() => advanceStage(), 55000);
 }
 
+// Video type selection
+let selectedVideoType = 'slideshow';
+function selectVideoType(type) {
+  selectedVideoType = type;
+  document.querySelectorAll('.video-type-card').forEach(card => {
+    card.classList.toggle('selected', card.dataset.type === type);
+  });
+}
+
+function updateProgressBar(pct) {
+  const bar = document.getElementById('gen-progress-bar');
+  const txt = document.getElementById('gen-status-text');
+  if (bar) bar.style.width = pct + '%';
+  if (txt) txt.textContent = 'Generating… ' + pct + '%';
+  const modalStatus = document.getElementById('gen-modal-status');
+  if (modalStatus && pct > 0) modalStatus.textContent = 'Progress: ' + pct + '%';
+}
+
 function startPolling() {
   pollTimer = setInterval(() => {
     fetch('/story/' + STORY_ID + '/generate-video/', {
@@ -457,12 +520,16 @@ function startPolling() {
     })
     .then(r => r.json())
     .then(data => {
+      // Update progress bar for cinematic
+      if (data.progress !== undefined) updateProgressBar(data.progress);
+
       if (data.status === 'completed') {
         clearInterval(pollTimer);
         STAGE_IDS.forEach(id => {
           const el = document.getElementById(id);
           if (el) { el.className = 'gen-stage done'; el.querySelector('.gen-stage-status').textContent = '✓ Done'; }
         });
+        updateProgressBar(100);
         document.getElementById('gen-modal-status').textContent = '🎉 Video ready! Redirecting…';
         showToast('Video generated! Opening player…', 'success');
         setTimeout(() => { window.location.href = '/story/' + STORY_ID + '/video/'; }, 1500);
@@ -471,7 +538,7 @@ function startPolling() {
         document.getElementById('video-gen-modal').classList.remove('show');
         showToast('Generation failed: ' + (data.error || 'Unknown error'), 'error');
         const btn = document.getElementById('generate-video-btn');
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-camera-video me-2"></i>Retry Video Generation'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-camera-video me-2"></i>Generate Video'; }
       }
     })
     .catch(err => { document.getElementById('gen-modal-status').textContent = 'Checking… (network hiccup)'; });
@@ -486,12 +553,16 @@ if (generateBtn) {
   {% else %}
     generateBtn.addEventListener('click', () => {
       generateBtn.disabled = true;
-      generateBtn.innerHTML = '<span class="pulse-dot"></span>Starting…';
+      const isCinematic = selectedVideoType === 'cinematic';
+      generateBtn.innerHTML = '<span class="pulse-dot"></span>' + (isCinematic ? 'Starting Cinematic…' : 'Starting Slideshow…');
       showGenModal();
+      if (isCinematic) {
+        document.getElementById('gen-modal-status').textContent = 'Animating scenes with AI — this takes 3–5 minutes…';
+      }
       fetch('/story/' + STORY_ID + '/generate-video/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
-        body: JSON.stringify({})
+        body: JSON.stringify({ video_type: selectedVideoType })
       })
       .then(r => { if (!r.ok) throw new Error('Server error ' + r.status); return r.json(); })
       .then(data => {
@@ -508,7 +579,7 @@ if (generateBtn) {
         document.getElementById('video-gen-modal').classList.remove('show');
         showToast('Failed to start: ' + err.message, 'error');
         generateBtn.disabled = false;
-        generateBtn.innerHTML = '<i class="bi bi-camera-video me-2"></i>Generate Final Video';
+        generateBtn.innerHTML = '<i class="bi bi-camera-video me-2"></i>Generate Video';
       });
     });
   {% endif %}

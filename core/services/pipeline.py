@@ -300,11 +300,103 @@ def generate_story_video(user_input_id: int) -> str:
 def generate_story_video_async(user_input_id: int) -> None:
     """
     Async wrapper for generate_story_video (for background tasks).
-    
+
     This function can be called by Django-Q or Celery workers.
     """
     try:
         generate_story_video(user_input_id)
     except Exception as e:
         logger.exception(f"Async video generation failed for request {user_input_id}: {e}")
+
+
+def generate_story_video_cinematic(user_input_id: int) -> str:
+    """
+    Cinematic pipeline: generate AI animated clips per scene then assemble.
+
+    Progress is written to StoryRequest.video_progress (0-100) so the
+    frontend can show a real progress bar while the job runs in a thread.
+    """
+    from core.models import StoryRequest, StoryScene
+    from ai_modules.video_engine_cinematic import (
+        generate_scene_clips_parallel,
+        assemble_cinematic,
+    )
+
+    story_request = StoryRequest.objects.get(id=user_input_id)
+
+    def _set_progress(pct: int):
+        StoryRequest.objects.filter(pk=user_input_id).update(video_progress=pct)
+
+    try:
+        _set_progress(0)
+        scenes = list(story_request.scenes.order_by('scene_id'))
+        if not scenes:
+            raise ValueError("No scenes found for story")
+
+        scene_images = [s.image_path for s in scenes if s.image_path]
+        scene_audio  = [s.audio_path  for s in scenes if s.audio_path]
+
+        if len(scene_images) != len(scene_audio):
+            raise ValueError(
+                f"Scene count mismatch: {len(scene_images)} images vs {len(scene_audio)} audio"
+            )
+
+        # Step 1: Generate AI video clips for each scene (0–60%)
+        clip_dir = f"clips/story_{user_input_id}"
+
+        def _clip_progress(pct: int):
+            _set_progress(pct)
+
+        clip_paths = generate_scene_clips_parallel(
+            story_id=user_input_id,
+            scene_images=scene_images,
+            clip_output_dir=clip_dir,
+            progress_callback=_clip_progress,
+            max_workers=2,
+        )
+
+        # Cache clip paths on scenes for re-use
+        for scene, clip_rel in zip(scenes, clip_paths):
+            if clip_rel:
+                StoryScene.objects.filter(pk=scene.pk).update(video_clip_path=clip_rel)
+
+        _set_progress(62)
+
+        # Step 2: Assemble final video (60–100%)
+        timestamp = int(timezone.now().timestamp() * 1000)
+        video_path = f"videos/story_{user_input_id}_cinematic_{timestamp}.mp4"
+
+        background_music = None
+        music_path = Path(settings.MEDIA_ROOT) / "background_music.mp3"
+        if music_path.exists():
+            background_music = str(music_path)
+
+        def _assemble_progress(pct: int):
+            _set_progress(62 + int(pct * 0.38))
+
+        assemble_cinematic(
+            story_id=user_input_id,
+            scene_images=scene_images,
+            scene_audio=scene_audio,
+            scene_clip_paths=clip_paths,
+            output_path=video_path,
+            background_music=background_music,
+            progress_callback=_assemble_progress,
+        )
+
+        story_request.video_path = video_path
+        story_request.video_progress = 100
+        story_request.mark_completed()
+        logger.info("Cinematic video complete: %s", video_path)
+        return video_path
+
+    except Exception as exc:
+        logger.exception("Cinematic pipeline failed for story %s: %s", user_input_id, exc)
+        try:
+            StoryRequest.objects.filter(pk=user_input_id).update(
+                status='failed', error_message=str(exc)
+            )
+        except Exception:
+            pass
+        raise
 
