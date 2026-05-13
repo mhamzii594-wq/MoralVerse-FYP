@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0002_storyrequest_user'),
+        ('core', '0006_add_ghibli_avatar_path'),
     ]
 
     operations = [
