@@ -313,7 +313,7 @@ const SCENES = [
     text: "{{ scene.text|escapejs }}",
     image: {% if scene.image_path %}"{{ scene.image_path }}"{% else %}null{% endif %},
     audio: {% if scene.audio_path %}"{{ scene.audio_path }}"{% else %}null{% endif %},
-    decision: {% if scene.decision %}{{ scene.decision_json|default:"null" }}{% else %}null{% endif %}
+    decision: {% if scene.decision %}{{ scene.decision_json|safe }}{% else %}null{% endif %}
   }{% if not forloop.last %},{% endif %}
   {% endfor %}
 ];
