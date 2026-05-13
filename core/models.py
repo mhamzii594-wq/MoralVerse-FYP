@@ -19,6 +19,11 @@ class StoryRequest(models.Model):
         ('completed', 'Completed'),
         ('failed', 'Failed'),
     ]
+
+    VIDEO_TYPE_CHOICES = [
+        ('slideshow', 'Slideshow'),
+        ('cinematic', 'Cinematic'),
+    ]
     
     # User association
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='stories', null=True, blank=True)
@@ -53,6 +58,8 @@ class StoryRequest(models.Model):
     # Video output
     video_path = models.CharField(max_length=500, blank=True, null=True)
     subtitle_path = models.CharField(max_length=500, blank=True, null=True)
+    video_type = models.CharField(max_length=20, choices=VIDEO_TYPE_CHOICES, default='slideshow')
+    video_progress = models.IntegerField(default=0)
     
     # Status and metadata
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
@@ -94,6 +101,7 @@ class StoryScene(models.Model):
     image_prompt = models.TextField(blank=True)
     image_path = models.CharField(max_length=500, blank=True, null=True)
     audio_path = models.CharField(max_length=500, blank=True, null=True)
+    video_clip_path = models.CharField(max_length=500, blank=True, null=True)
     decision = models.JSONField(default=dict, blank=True, null=True)  # {"A": "...", "B": "..."}
     applied_decision = models.CharField(max_length=1, blank=True, null=True)  # 'A' or 'B'
     
