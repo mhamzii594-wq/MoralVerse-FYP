@@ -2,8 +2,9 @@
 Image-to-video clip generation for the cinematic pipeline.
 
 Provider priority:
-  1. ModelsLab (existing API key, cheap, async job-based)
-  2. Stability AI SVD (existing key, fallback)
+  1. ModelsLab Kling v2.1 i2v (fast, 1080p, character-consistent animation)
+  2. ModelsLab basic img2video (v6, cheap fallback)
+  3. Stability AI SVD (last-resort fallback)
 
 Returns a local .mp4 path on success, raises on failure.
 """
@@ -13,12 +14,15 @@ import time
 import logging
 import requests
 from pathlib import Path
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-MODELSLAB_API_KEY = os.getenv("MODELSLAB_API_KEY", "")
-STABILITY_API_KEY = os.getenv("STABILITY_API_KEY", "")
+# Kling v2.1 via ModelsLab video-fusion API (v7)
+_KLING_V21_SUBMIT = "https://modelslab.com/api/v7/video-fusion/image-to-video"
+_KLING_V21_FETCH  = "https://modelslab.com/api/v7/video-fusion/fetch"
 
+# ModelsLab basic img2video (v6, fallback)
 _MODELSLAB_SUBMIT = "https://modelslab.com/api/v6/video/img2video"
 _MODELSLAB_FETCH  = "https://modelslab.com/api/v6/video/fetch"
 
@@ -26,18 +30,36 @@ _STABILITY_SUBMIT = "https://api.stability.ai/v2beta/image-to-video"
 _STABILITY_FETCH  = "https://api.stability.ai/v2beta/image-to-video/result/{generation_id}"
 
 
+def _modelslab_key() -> str:
+    # Read lazily so Django's load_dotenv() has already run
+    return os.getenv("MODELSLAB_API_KEY", "")
+
+
+def _stability_key() -> str:
+    return os.getenv("STABILITY_API_KEY", "")
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
-def generate_clip(image_path: str, output_path: str, duration: int = 4) -> str:
+def generate_clip(
+    image_path: str,
+    output_path: str,
+    duration: int = 5,
+    prompt: str = "",
+    audio_duration: Optional[float] = None,
+) -> str:
     """
     Generate an animated video clip from a still image.
 
     Args:
-        image_path: Absolute path to the source scene image (PNG/JPG).
-        output_path: Where to save the resulting .mp4.
-        duration: Desired clip length in seconds (3–6 recommended).
+        image_path: Absolute local path to the source scene image (PNG/JPG).
+        output_path: Absolute local path for the resulting .mp4.
+        duration: Fallback clip length in seconds when audio_duration is not given.
+        prompt: Scene description to guide the animation.
+        audio_duration: Actual narration audio length in seconds. When provided,
+            selects Kling clip length automatically: >= 6s → 10s clip, else → 5s clip.
 
     Returns:
         output_path on success.
@@ -47,41 +69,123 @@ def generate_clip(image_path: str, output_path: str, duration: int = 4) -> str:
     """
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    if MODELSLAB_API_KEY:
-        try:
-            return _modelslab(image_path, output_path, duration)
-        except Exception as exc:
-            logger.warning("ModelsLab img2video failed: %s — trying Stability", exc)
+    if not prompt:
+        prompt = (
+            "Animate this children's story scene with gentle cinematic motion, "
+            "smooth camera movement, vivid colors, characters moving naturally"
+        )
 
-    if STABILITY_API_KEY:
+    # Choose clip length: match audio when available so Kling generates enough content
+    effective_duration = duration
+    if audio_duration is not None:
+        effective_duration = 10 if audio_duration >= 6.0 else 5
+
+    ml_key = _modelslab_key()
+    if ml_key:
         try:
-            return _stability_svd(image_path, output_path)
+            return _kling_v21(image_path, output_path, effective_duration, prompt, ml_key)
         except Exception as exc:
-            logger.warning("Stability SVD img2video failed: %s", exc)
+            logger.error("Kling v2.1 failed: %s — trying ModelsLab basic", exc)
+
+        try:
+            return _modelslab_basic(image_path, output_path, effective_duration, ml_key)
+        except Exception as exc:
+            logger.error("ModelsLab basic img2video failed: %s — trying Stability", exc)
+    else:
+        logger.error("MODELSLAB_API_KEY not set — skipping ModelsLab providers")
+
+    st_key = _stability_key()
+    if st_key:
+        try:
+            return _stability_svd(image_path, output_path, st_key)
+        except Exception as exc:
+            logger.error("Stability SVD failed: %s", exc)
+    else:
+        logger.error("STABILITY_API_KEY not set — skipping Stability SVD")
 
     raise RuntimeError("All img2video providers failed — check API keys and logs.")
 
 
 # ---------------------------------------------------------------------------
-# ModelsLab provider
+# URL helper — use our own publicly-served media instead of upload endpoint
 # ---------------------------------------------------------------------------
 
-def _modelslab(image_path: str, output_path: str, duration: int) -> str:
-    logger.info("img2video: submitting to ModelsLab — %s", image_path)
+def _public_image_url(image_path: str) -> str:
+    """
+    Convert a local absolute media path to the public HTTPS URL served by nginx.
 
-    # ModelsLab requires a publicly accessible image URL or base64.
-    # We upload via their file hosting endpoint first.
-    image_url = _modelslab_upload(image_path)
+    e.g. /root/MoralVerse-FYP/media/images/foo.png
+         → https://moralverse.dev/media/images/foo.png
+    """
+    try:
+        from django.conf import settings as dj_settings
+        media_root = Path(dj_settings.MEDIA_ROOT).resolve()
+        abs_path = Path(image_path).resolve()
+        relative = abs_path.relative_to(media_root)
+        site_url = getattr(dj_settings, "SITE_URL", "").rstrip("/")
+        if not site_url:
+            site_url = "https://moralverse.dev"
+        media_url = dj_settings.MEDIA_URL.rstrip("/")
+        url = f"{site_url}{media_url}/{relative}"
+        logger.debug("Public image URL: %s", url)
+        return url
+    except Exception as exc:
+        raise RuntimeError(f"Could not build public image URL for {image_path}: {exc}") from exc
+
+
+# ---------------------------------------------------------------------------
+# Kling v2.1 provider (primary)
+# ---------------------------------------------------------------------------
+
+def _kling_v21(image_path: str, output_path: str, duration: int, prompt: str, key: str) -> str:
+    image_url = _public_image_url(image_path)
+    logger.info("img2video [Kling v2.1]: %s", image_url)
+
+    kling_duration = "10" if duration >= 8 else "5"
 
     payload = {
-        "key": MODELSLAB_API_KEY,
+        "key": key,
+        "model_id": "kling-v2-1-i2v",
         "init_image": image_url,
-        "motion_bucket_id": 40,        # 1-255; higher = more motion
-        "noise_aug_strength": 0.02,    # subtle noise for realism
+        "prompt": prompt[:500],
+        "duration": kling_duration,
+    }
+
+    resp = requests.post(_KLING_V21_SUBMIT, json=payload, timeout=60)
+    resp.raise_for_status()
+    data = resp.json()
+    logger.info("Kling v2.1 submit response: %s", data)
+
+    if data.get("status") == "error":
+        raise RuntimeError(f"Kling v2.1 submit error: {data.get('message')}")
+
+    if data.get("status") == "success" and data.get("output"):
+        return _download(data["output"][0], output_path)
+
+    fetch_id = data.get("id") or data.get("fetch_id")
+    if not fetch_id:
+        raise RuntimeError(f"Kling v2.1 returned no fetch_id: {data}")
+
+    return _poll(fetch_id, output_path, fetch_url=_KLING_V21_FETCH, key=key, timeout=300)
+
+
+# ---------------------------------------------------------------------------
+# ModelsLab basic img2video provider (fallback)
+# ---------------------------------------------------------------------------
+
+def _modelslab_basic(image_path: str, output_path: str, duration: int, key: str) -> str:
+    image_url = _public_image_url(image_path)
+    logger.info("img2video [ModelsLab basic]: %s", image_url)
+
+    payload = {
+        "key": key,
+        "init_image": image_url,
+        "motion_bucket_id": 40,
+        "noise_aug_strength": 0.02,
         "fps": 8,
-        "num_frames": duration * 8,    # 8 fps × duration seconds
-        "width": 512,
-        "height": 512,
+        "num_frames": duration * 8,
+        "width": 768,
+        "height": 768,
         "webhook": None,
         "track_id": None,
     }
@@ -89,53 +193,37 @@ def _modelslab(image_path: str, output_path: str, duration: int) -> str:
     resp = requests.post(_MODELSLAB_SUBMIT, json=payload, timeout=30)
     resp.raise_for_status()
     data = resp.json()
+    logger.info("ModelsLab basic submit response: %s", data)
 
     if data.get("status") == "error":
         raise RuntimeError(f"ModelsLab submit error: {data.get('message')}")
 
-    # Immediate result (rare but possible)
     if data.get("status") == "success" and data.get("output"):
         return _download(data["output"][0], output_path)
 
-    # Async job — poll with fetch_id
     fetch_id = data.get("id") or data.get("fetch_id")
     if not fetch_id:
         raise RuntimeError(f"ModelsLab returned no fetch_id: {data}")
 
-    return _modelslab_poll(fetch_id, output_path)
+    return _poll(fetch_id, output_path, fetch_url=_MODELSLAB_FETCH, key=key, timeout=180)
 
 
-def _modelslab_upload(image_path: str) -> str:
-    """Upload a local image to ModelsLab and return its hosted URL."""
-    upload_url = "https://modelslab.com/api/v6/realtime/upload"
-    with open(image_path, "rb") as f:
-        resp = requests.post(
-            upload_url,
-            data={"key": MODELSLAB_API_KEY},
-            files={"file": (Path(image_path).name, f, "image/png")},
-            timeout=30,
-        )
-    resp.raise_for_status()
-    data = resp.json()
-    url = data.get("url") or (data.get("output") or [None])[0]
-    if not url:
-        raise RuntimeError(f"ModelsLab upload returned no URL: {data}")
-    return url
+# ---------------------------------------------------------------------------
+# ModelsLab poll helper
+# ---------------------------------------------------------------------------
 
-
-def _modelslab_poll(fetch_id: str, output_path: str, timeout: int = 180) -> str:
-    """Poll ModelsLab fetch endpoint until the clip is ready."""
+def _poll(fetch_id: str, output_path: str, fetch_url: str, key: str, timeout: int = 180) -> str:
     deadline = time.time() + timeout
-    payload = {"key": MODELSLAB_API_KEY, "request_id": fetch_id}
+    payload = {"key": key, "request_id": fetch_id}
 
     while time.time() < deadline:
-        time.sleep(10)
-        resp = requests.post(_MODELSLAB_FETCH, json=payload, timeout=30)
+        time.sleep(15)
+        resp = requests.post(fetch_url, json=payload, timeout=30)
         resp.raise_for_status()
         data = resp.json()
 
         status = data.get("status", "")
-        logger.debug("ModelsLab poll status: %s", status)
+        logger.info("ModelsLab poll [%s] status: %s", fetch_id, status)
 
         if status == "success":
             url = (data.get("output") or [None])[0]
@@ -146,22 +234,20 @@ def _modelslab_poll(fetch_id: str, output_path: str, timeout: int = 180) -> str:
         if status == "error":
             raise RuntimeError(f"ModelsLab generation error: {data.get('message')}")
 
-        # status == "processing" or "queued" — keep waiting
-
-    raise RuntimeError(f"ModelsLab img2video timed out after {timeout}s")
+    raise RuntimeError(f"ModelsLab img2video timed out after {timeout}s (fetch_id={fetch_id})")
 
 
 # ---------------------------------------------------------------------------
-# Stability AI SVD provider
+# Stability AI SVD provider (last resort)
 # ---------------------------------------------------------------------------
 
-def _stability_svd(image_path: str, output_path: str) -> str:
-    logger.info("img2video: submitting to Stability SVD — %s", image_path)
+def _stability_svd(image_path: str, output_path: str, key: str) -> str:
+    logger.info("img2video [Stability SVD]: %s", image_path)
 
     with open(image_path, "rb") as f:
         resp = requests.post(
             _STABILITY_SUBMIT,
-            headers={"authorization": f"Bearer {STABILITY_API_KEY}"},
+            headers={"authorization": f"Bearer {key}"},
             files={"image": (Path(image_path).name, f, "image/png")},
             data={"seed": 0, "cfg_scale": 1.8, "motion_bucket_id": 40},
             timeout=30,
@@ -171,10 +257,10 @@ def _stability_svd(image_path: str, output_path: str) -> str:
     if not generation_id:
         raise RuntimeError(f"Stability SVD returned no generation id: {resp.text}")
 
-    return _stability_poll(generation_id, output_path)
+    return _stability_poll(generation_id, output_path, key)
 
 
-def _stability_poll(generation_id: str, output_path: str, timeout: int = 180) -> str:
+def _stability_poll(generation_id: str, output_path: str, key: str, timeout: int = 180) -> str:
     deadline = time.time() + timeout
     url = _STABILITY_FETCH.format(generation_id=generation_id)
 
@@ -182,7 +268,7 @@ def _stability_poll(generation_id: str, output_path: str, timeout: int = 180) ->
         time.sleep(10)
         resp = requests.get(
             url,
-            headers={"authorization": f"Bearer {STABILITY_API_KEY}", "accept": "video/*"},
+            headers={"authorization": f"Bearer {key}", "accept": "video/*"},
             timeout=30,
         )
         if resp.status_code == 202:
@@ -198,7 +284,7 @@ def _stability_poll(generation_id: str, output_path: str, timeout: int = 180) ->
 
 
 # ---------------------------------------------------------------------------
-# Shared helper
+# Shared download helper
 # ---------------------------------------------------------------------------
 
 def _download(url: str, output_path: str) -> str:
@@ -208,5 +294,6 @@ def _download(url: str, output_path: str) -> str:
     with open(output_path, "wb") as f:
         for chunk in resp.iter_content(chunk_size=8192):
             f.write(chunk)
-    logger.info("Clip downloaded: %s (%.1f MB)", output_path, os.path.getsize(output_path) / 1e6)
+    size_mb = os.path.getsize(output_path) / 1e6
+    logger.info("Clip downloaded: %s (%.1f MB)", output_path, size_mb)
     return output_path

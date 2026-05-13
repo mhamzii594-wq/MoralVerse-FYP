@@ -319,6 +319,7 @@ def generate_story_video_cinematic(user_input_id: int) -> str:
     from core.models import StoryRequest, StoryScene
     from ai_modules.video_engine_cinematic import (
         generate_scene_clips_parallel,
+        generate_lipsync_clips_parallel,
         assemble_cinematic,
     )
 
@@ -341,16 +342,77 @@ def generate_story_video_cinematic(user_input_id: int) -> str:
                 f"Scene count mismatch: {len(scene_images)} images vs {len(scene_audio)} audio"
             )
 
-        # Step 1: Generate AI video clips for each scene (0–60%)
+        # Build per-scene video prompts for Kling v2.1.
+        # Priority: LLM-generated video_prompt stored in story_json (Pass 3) → rule-based fallback.
+        from ai_modules.prompt_builder import build_video_prompt
+
+        story_scenes_data = {}
+        character_anchor = ''
+        if story_request.story_json:
+            for sd in story_request.story_json.get('scenes', []):
+                story_scenes_data[sd.get('id', 0)] = sd
+            character_anchor = story_request.story_json.get('character_anchor', '')
+
+        scenes_with_images = [s for s in scenes if s.image_path]
+        total_scenes_count = len(scenes_with_images)
+        scene_prompts = []
+        position = 0
+        for s in scenes_with_images:
+            position += 1
+            sd = story_scenes_data.get(s.scene_id, {})
+
+            # Use LLM-generated video_prompt if available (stored during story generation)
+            llm_video_prompt = (sd.get('video_prompt') or '').strip()
+            if llm_video_prompt:
+                prompt = llm_video_prompt
+                logger.info('[cinematic] scene %d/%d using LLM video_prompt', position, total_scenes_count)
+            else:
+                # Fallback: rule-based prompt builder
+                text = (sd.get('text') or '').strip()
+                prompt = build_video_prompt(
+                    text=text,
+                    character_anchor=character_anchor,
+                    position=position,
+                    total_scenes=total_scenes_count,
+                    title=story_request.title or '',
+                )
+                logger.info('[cinematic] scene %d/%d using rule-based prompt (no LLM prompt stored)', position, total_scenes_count)
+
+            logger.info('[cinematic] scene %d prompt: %s', position, prompt[:200])
+            scene_prompts.append(prompt)
+
+        # --- Measure per-scene audio durations for duration-matched Kling clips ---
+        scene_durations: list = []
+        try:
+            from mutagen.mp3 import MP3
+            from mutagen.wave import WAVE
+            for audio_rel in scene_audio:
+                audio_full = Path(settings.MEDIA_ROOT) / audio_rel
+                try:
+                    if audio_full.suffix.lower() == '.mp3':
+                        scene_durations.append(MP3(str(audio_full)).info.length)
+                    else:
+                        scene_durations.append(WAVE(str(audio_full)).info.length)
+                except Exception:
+                    scene_durations.append(None)
+            logger.info('[cinematic] audio durations: %s', [round(d, 2) if d else None for d in scene_durations])
+        except ImportError:
+            logger.warning('[cinematic] mutagen not installed — using default 5s clip duration')
+            scene_durations = [None] * len(scene_audio)
+
+        # Step 1: Generate AI video clips for each scene (0–50%)
         clip_dir = f"clips/story_{user_input_id}"
 
         def _clip_progress(pct: int):
-            _set_progress(pct)
+            # pct is 0-100 proportional; map to 0-50%
+            _set_progress(int(pct * 0.50))
 
         clip_paths = generate_scene_clips_parallel(
             story_id=user_input_id,
             scene_images=scene_images,
             clip_output_dir=clip_dir,
+            scene_prompts=scene_prompts,
+            scene_durations=scene_durations if scene_durations else None,
             progress_callback=_clip_progress,
             max_workers=2,
         )
@@ -360,9 +422,44 @@ def generate_story_video_cinematic(user_input_id: int) -> str:
             if clip_rel:
                 StoryScene.objects.filter(pk=scene.pk).update(video_clip_path=clip_rel)
 
-        _set_progress(62)
+        _set_progress(50)
 
-        # Step 2: Assemble final video (60–100%)
+        # Step 2: Generate lipsync clips if an avatar is available (50–80%)
+        lipsync_paths: list = [None] * len(scene_images)
+        avatar_abs = None
+        if story_request.avatar_path:
+            _candidate = Path(settings.MEDIA_ROOT) / story_request.avatar_path
+            if _candidate.exists():
+                avatar_abs = str(_candidate)
+        if not avatar_abs and story_request.ghibli_avatar_path:
+            _candidate = Path(settings.MEDIA_ROOT) / story_request.ghibli_avatar_path
+            if _candidate.exists():
+                avatar_abs = str(_candidate)
+
+        if avatar_abs:
+            logger.info('[cinematic] Generating lipsync clips from avatar: %s', avatar_abs)
+            lipsync_dir = f"lipsync/story_{user_input_id}"
+
+            def _lipsync_progress(pct: int):
+                # pct is 0-100 proportional; map to 50-80%
+                _set_progress(50 + int(pct * 0.30))
+
+            lipsync_paths = generate_lipsync_clips_parallel(
+                story_id=user_input_id,
+                avatar_path=avatar_abs,
+                scene_audio=scene_audio,
+                lipsync_output_dir=lipsync_dir,
+                progress_callback=_lipsync_progress,
+                max_workers=2,
+            )
+            success_count = sum(1 for p in lipsync_paths if p)
+            logger.info('[cinematic] Lipsync: %d/%d clips generated', success_count, len(lipsync_paths))
+        else:
+            logger.info('[cinematic] No avatar uploaded — skipping lipsync')
+
+        _set_progress(80)
+
+        # Step 3: Assemble final video (80–100%)
         timestamp = int(timezone.now().timestamp() * 1000)
         video_path = f"videos/story_{user_input_id}_cinematic_{timestamp}.mp4"
 
@@ -372,7 +469,7 @@ def generate_story_video_cinematic(user_input_id: int) -> str:
             background_music = str(music_path)
 
         def _assemble_progress(pct: int):
-            _set_progress(62 + int(pct * 0.38))
+            _set_progress(80 + int(pct * 0.20))
 
         assemble_cinematic(
             story_id=user_input_id,
@@ -381,6 +478,7 @@ def generate_story_video_cinematic(user_input_id: int) -> str:
             scene_clip_paths=clip_paths,
             output_path=video_path,
             background_music=background_music,
+            lipsync_clip_paths=lipsync_paths,
             progress_callback=_assemble_progress,
         )
 

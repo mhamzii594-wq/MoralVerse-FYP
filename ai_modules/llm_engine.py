@@ -635,6 +635,134 @@ def _attach_images(
 
 
 # ---------------------------------------------------------------------------
+# Pass 3 — generate video motion prompts from scene texts
+# ---------------------------------------------------------------------------
+
+def _generate_video_prompts_for_scenes(
+    scenes: list,
+    character_anchor: str,
+    total_scenes: int,
+    provider: str = "groq",
+) -> list:
+    """
+    Pass-3: for each scene text, ask the LLM to write a Kling i2v motion script.
+
+    Each prompt describes:
+      - What the character's body does (specific limb movements)
+      - How the camera moves (pan / dolly / zoom / track)
+      - What moves in the environment
+    The image prompt covers composition/colour/style — the video prompt covers MOTION ONLY.
+    Falls back to prompt_builder.build_video_prompt() if the LLM call fails.
+    """
+    import json as _json
+    from ai_modules.prompt_builder import build_video_prompt as _rule_prompt, _condense_character
+
+    if not scenes:
+        return []
+
+    condensed_char = _condense_character(character_anchor)
+
+    scene_lines = []
+    for i, s in enumerate(scenes, 1):
+        if isinstance(s, dict):
+            txt = (s.get("text") or "").strip()
+            position_label = (
+                "OPENING scene" if i == 1
+                else "CLOSING scene" if i == total_scenes
+                else f"MIDDLE scene {i}/{total_scenes}"
+            )
+            scene_lines.append(f"[{position_label}] Scene {s.get('id', i)}: \"{txt}\"")
+
+    system = (
+        "You are an AI video director writing Kling i2v motion scripts for a children's animated story.\n\n"
+
+        f"CHARACTER appearing in every scene: {condensed_char}\n\n"
+
+        "For each scene, write a motion script of exactly 2 sentences (max 300 characters total) that tells "
+        "the Kling image-to-video AI:\n"
+        "  Sentence 1 — CHARACTER MOTION: what the character's body does. "
+        "Name specific limbs, direction, and speed.\n"
+        "  Sentence 2 — CAMERA + ENVIRONMENT: how the camera moves AND what moves in the background.\n\n"
+
+        "STRICT RULES:\n"
+        "  - MOTION ONLY — never describe colour, composition, or art style (the image already shows those).\n"
+        "  - Be specific: 'steps forward with left foot, arms swinging, head turning right to look' "
+        "not just 'walks'.\n"
+        "  - Camera vocabulary: slow push in · pull back · side-scroll · overhead tilt down · "
+        "static wide · gentle pan · dynamic tracking shot.\n"
+        "  - For OPENING scenes: use wide establishing shot slowly pushing in.\n"
+        "  - For CLOSING scenes: use slow pull back to reveal the full environment.\n"
+        "  - End every prompt with exactly these 5 words: 'Smooth 2D anime, cel-shaded.'\n"
+        "  - Max 300 characters per prompt including the closing 5 words.\n"
+        "  - Return ONLY valid JSON. No markdown fences. No explanation.\n\n"
+
+        "OUTPUT FORMAT:\n"
+        "{\"scenes\": [{\"video_prompt\": \"...\"}, {\"video_prompt\": \"...\"}]}\n"
+        "Array length must EXACTLY match the number of scenes given — no more, no fewer.\n\n"
+
+        "EXAMPLES:\n"
+        "[OPENING scene] \"Tooba walked through the farm watching chickens peck at the ground.\"\n"
+        "→ {\"video_prompt\": \"Character walks forward, arms swinging, head turning left toward chickens. "
+        "Wide establishing shot slowly pushing in; chickens bob and peck, grass sways. "
+        "Smooth 2D anime, cel-shaded.\"}\n\n"
+
+        "[MIDDLE scene 3/6] \"She noticed the old rusty well filled with debris and decided to clean it.\"\n"
+        "→ {\"video_prompt\": \"Character stops, head snaps toward the well, hands go to hips. "
+        "Camera slow push in to face; leaves drift past, well water ripples faintly. "
+        "Smooth 2D anime, cel-shaded.\"}\n\n"
+
+        "[CLOSING scene] \"Tooba smiled as the clean well sparkled in the afternoon light.\"\n"
+        "→ {\"video_prompt\": \"Character turns toward the camera, face brightening with a warm smile, "
+        "arms relaxing at sides. Camera pulls back slowly to reveal the full farm; birds fly across sky. "
+        "Smooth 2D anime, cel-shaded.\"}"
+    )
+
+    user_msg = (
+        "Write a video motion script for each of these scenes:\n"
+        + "\n".join(scene_lines)
+    )
+
+    try:
+        content = _call_llm(provider, system, user_msg)
+        logger.debug("Pass-3 raw response: %s", content[:300])
+        data = _json.loads(_clean_json(content))
+        prompt_list = data.get("scenes", [])
+        if isinstance(prompt_list, list) and len(prompt_list) == len(scenes):
+            result = []
+            for p in prompt_list:
+                if not isinstance(p, dict):
+                    result.append(None)
+                    continue
+                vp = (p.get("video_prompt") or "").strip()
+                result.append(vp if vp else None)
+            valid = sum(1 for r in result if r)
+            logger.info("Pass-3 video prompts generated: %d/%d valid", valid, len(result))
+            if valid > 0:
+                return result
+        logger.warning(
+            "Pass-3 returned %d prompts for %d scenes — using rule fallback",
+            len(prompt_list) if isinstance(prompt_list, list) else 0,
+            len(scenes),
+        )
+    except Exception as exc:
+        logger.warning("Pass-3 video prompt generation failed: %s — using rule fallback", exc)
+
+    # Rule-based fallback
+    fallback = []
+    for i, s in enumerate(scenes, 1):
+        text = (s.get("text") or "") if isinstance(s, dict) else ""
+        fallback.append(
+            _rule_prompt(
+                text=text,
+                character_anchor=character_anchor,
+                position=i,
+                total_scenes=total_scenes,
+            )
+        )
+    return fallback
+
+
+# ---------------------------------------------------------------------------
 # Pass 1 — story text generation
 # ---------------------------------------------------------------------------
 
@@ -698,6 +826,35 @@ def _generate_story_with_llm(
     for i, scene in enumerate(scenes):
         if isinstance(scene, dict) and i < len(image_prompts):
             scene["image_prompt"] = image_prompts[i]
+
+    # PASS 3 — video motion prompts for the cinematic pipeline.
+    # Try providers in reliability order for structured JSON — Groq first.
+    _vp_order = ["groq", "gemini", provider, "modelslab"]
+    _vp_tried = []
+    video_prompts = None
+    for _vp in _vp_order:
+        if _vp in _vp_tried:
+            continue
+        _vp_tried.append(_vp)
+        if _vp == "groq" and not os.getenv("GROQ_API_KEY"):
+            continue
+        if _vp == "gemini" and not os.getenv("GEMINI_API_KEY"):
+            continue
+        if _vp == "modelslab" and not os.getenv("MODELSLAB_API_KEY"):
+            continue
+        try:
+            vps = _generate_video_prompts_for_scenes(scenes, character_anchor, len(scenes), _vp)
+            if vps and any(v for v in vps):
+                video_prompts = vps
+                logger.info("Pass-3 video prompts via provider: %s", _vp)
+                break
+        except Exception as _vpe:
+            logger.warning("Pass-3 provider %s failed: %s", _vp, _vpe)
+
+    if video_prompts:
+        for i, scene in enumerate(scenes):
+            if isinstance(scene, dict) and i < len(video_prompts) and video_prompts[i]:
+                scene["video_prompt"] = video_prompts[i]
 
     return data
 
@@ -808,6 +965,24 @@ def regenerate_story_after_decision(
             for i, scene in enumerate(new_scenes):
                 if isinstance(scene, dict) and i < len(image_prompts):
                     scene["image_prompt"] = image_prompts[i]
+
+            # Video motion prompts for the new scenes (Groq first for reliable JSON)
+            for _vp in ["groq", "gemini", attempt_provider]:
+                if _vp == "groq" and not os.getenv("GROQ_API_KEY"):
+                    continue
+                if _vp == "gemini" and not os.getenv("GEMINI_API_KEY"):
+                    continue
+                try:
+                    vps = _generate_video_prompts_for_scenes(
+                        new_scenes, character_anchor, len(new_scenes), _vp
+                    )
+                    if vps and any(v for v in vps):
+                        for i, scene in enumerate(new_scenes):
+                            if isinstance(scene, dict) and i < len(vps) and vps[i]:
+                                scene["video_prompt"] = vps[i]
+                        break
+                except Exception:
+                    pass
 
             # Merge: keep all scenes that came BEFORE the decision point, then append new scenes.
             # Without this merge, story_json is replaced with only 2 scenes and the video loses

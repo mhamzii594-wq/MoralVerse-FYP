@@ -27,6 +27,7 @@ def assemble_cinematic(
     scene_clip_paths: List[Optional[str]],
     output_path: str,
     background_music: Optional[str] = None,
+    lipsync_clip_paths: Optional[List[Optional[str]]] = None,
     progress_callback=None,
 ) -> str:
     """
@@ -39,6 +40,9 @@ def assemble_cinematic(
         scene_clip_paths: Relative media paths to AI video clips (may be None per scene).
         output_path: Relative media path for the final output MP4.
         background_music: Optional path to background music file.
+        lipsync_clip_paths: Optional per-scene talking-head lipsync clips (SadTalker output).
+            When present and a clip exists for a scene, the face is composited at the
+            bottom-left corner over the main Kling scene clip.
         progress_callback: Optional callable(pct: int) called as assembly progresses.
 
     Returns:
@@ -49,7 +53,7 @@ def assemble_cinematic(
         from moviepy.video.VideoClip import ImageClip
         from moviepy.audio.io.AudioFileClip import AudioFileClip
         from moviepy.audio.AudioClip import CompositeAudioClip
-        from moviepy import concatenate_videoclips, concatenate_audioclips
+        from moviepy import concatenate_videoclips, concatenate_audioclips, CompositeVideoClip
         import moviepy.video.fx as vfx
     except ImportError as exc:
         raise ImportError("MoviePy is required: pip install moviepy>=2.0.0") from exc
@@ -123,6 +127,24 @@ def assemble_cinematic(
             except Exception as exc:
                 logger.warning("ImageClip failed scene %d: %s", scene_num, exc)
                 continue
+
+        # --- Composite lipsync face if available ---
+        lip_rel = lipsync_clip_paths[i] if lipsync_clip_paths and i < len(lipsync_clip_paths) else None
+        lip_full = (media_root / lip_rel) if lip_rel else None
+        if lip_full and lip_full.exists():
+            try:
+                lip_vc = VideoFileClip(str(lip_full)).without_audio()
+                # Loop lipsync clip if it's shorter than scene clip
+                if lip_vc.duration < clip_duration:
+                    loops_needed = int(clip_duration / lip_vc.duration) + 1
+                    lip_vc = concatenate_videoclips([lip_vc] * loops_needed)
+                lip_vc = lip_vc.subclipped(0, clip_duration).resized((220, 220))
+                # Position: bottom-left corner with 16px margin
+                lip_positioned = lip_vc.with_position((16, video_clip.h - 236))
+                video_clip = CompositeVideoClip([video_clip, lip_positioned])
+                logger.info("[cinematic] scene %d: lipsync face composited", scene_num)
+            except Exception as exc:
+                logger.warning("[cinematic] scene %d lipsync composite failed: %s", scene_num, exc)
 
         # --- Attach narration audio ---
         if narration is not None:
@@ -207,11 +229,19 @@ def generate_scene_clips_parallel(
     story_id: int,
     scene_images: List[str],
     clip_output_dir: str,
+    scene_prompts: Optional[List[str]] = None,
+    scene_durations: Optional[List[float]] = None,
     progress_callback=None,
     max_workers: int = 2,
 ) -> List[Optional[str]]:
     """
     Generate AI video clips for all scenes in parallel (max 2 at a time).
+
+    Args:
+        scene_prompts: Optional per-scene text prompts for guided animation.
+        scene_durations: Optional per-scene narration audio lengths in seconds.
+            When provided, Kling selects 10s clip for scenes >= 6s, else 5s.
+        progress_callback: Called with 0-100 proportional completion.
 
     Returns a list of relative media paths (or None where generation failed).
     """
@@ -226,7 +256,7 @@ def generate_scene_clips_parallel(
     semaphore = threading.Semaphore(max_workers)
     completed = [0]
 
-    def _generate_one(index: int, image_rel: str):
+    def _generate_one(index: int, image_rel: str, prompt: str, audio_dur: Optional[float]):
         with semaphore:
             image_full = str(media_root / image_rel)
             clip_rel = f"{clip_output_dir}/scene_{index + 1}.mp4"
@@ -238,11 +268,11 @@ def generate_scene_clips_parallel(
                     results[index] = clip_rel
                     completed[0] += 1
                     if progress_callback:
-                        progress_callback(int(completed[0] / len(scene_images) * 60))
+                        progress_callback(int(completed[0] / len(scene_images) * 100))
                 return
 
             try:
-                generate_clip(image_full, clip_full, duration=4)
+                generate_clip(image_full, clip_full, duration=5, prompt=prompt, audio_duration=audio_dur)
                 with lock:
                     results[index] = clip_rel
                     logger.info("[cinematic] scene %d clip generated", index + 1)
@@ -254,11 +284,85 @@ def generate_scene_clips_parallel(
             with lock:
                 completed[0] += 1
                 if progress_callback:
-                    progress_callback(int(completed[0] / len(scene_images) * 60))
+                    progress_callback(int(completed[0] / len(scene_images) * 100))
 
     threads = []
     for i, img in enumerate(scene_images):
-        t = threading.Thread(target=_generate_one, args=(i, img), daemon=True)
+        prompt = (scene_prompts[i] if scene_prompts and i < len(scene_prompts) else "") or ""
+        audio_dur = (scene_durations[i] if scene_durations and i < len(scene_durations) else None)
+        t = threading.Thread(target=_generate_one, args=(i, img, prompt, audio_dur), daemon=True)
+        threads.append(t)
+        t.start()
+
+    for t in threads:
+        t.join()
+
+    return results
+
+
+def generate_lipsync_clips_parallel(
+    story_id: int,
+    avatar_path: str,
+    scene_audio: List[str],
+    lipsync_output_dir: str,
+    progress_callback=None,
+    max_workers: int = 2,
+) -> List[Optional[str]]:
+    """
+    Generate SadTalker lipsync clips for every scene in parallel.
+
+    Args:
+        avatar_path: Absolute local path to the avatar portrait image.
+        scene_audio: Relative media paths to per-scene narration audio.
+        lipsync_output_dir: Relative media dir where clips are saved.
+        progress_callback: Called with 0-100 proportional completion.
+
+    Returns a list of relative media paths (or None where generation failed).
+    """
+    from ai_modules.lipsync import generate_lipsync_clip
+
+    media_root = Path(settings.MEDIA_ROOT)
+    lip_dir = media_root / lipsync_output_dir
+    lip_dir.mkdir(parents=True, exist_ok=True)
+
+    results: List[Optional[str]] = [None] * len(scene_audio)
+    lock = threading.Lock()
+    semaphore = threading.Semaphore(max_workers)
+    completed = [0]
+
+    def _generate_one(index: int, audio_rel: str):
+        with semaphore:
+            audio_full = str(media_root / audio_rel)
+            lip_rel = f"{lipsync_output_dir}/scene_{index + 1}.mp4"
+            lip_full = str(media_root / lip_rel)
+
+            if os.path.exists(lip_full):
+                logger.info("[lipsync] scene %d already cached", index + 1)
+                with lock:
+                    results[index] = lip_rel
+                    completed[0] += 1
+                    if progress_callback:
+                        progress_callback(int(completed[0] / len(scene_audio) * 100))
+                return
+
+            try:
+                generate_lipsync_clip(avatar_path, audio_full, lip_full)
+                with lock:
+                    results[index] = lip_rel
+                    logger.info("[lipsync] scene %d generated", index + 1)
+            except Exception as exc:
+                logger.error("[lipsync] scene %d failed: %s", index + 1, exc)
+                with lock:
+                    results[index] = None
+
+            with lock:
+                completed[0] += 1
+                if progress_callback:
+                    progress_callback(int(completed[0] / len(scene_audio) * 100))
+
+    threads = []
+    for i, audio in enumerate(scene_audio):
+        t = threading.Thread(target=_generate_one, args=(i, audio), daemon=True)
         threads.append(t)
         t.start()
 
