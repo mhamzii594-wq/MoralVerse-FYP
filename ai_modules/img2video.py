@@ -162,11 +162,14 @@ def _kling_v21(image_path: str, output_path: str, duration: int, prompt: str, ke
     if data.get("status") == "success" and data.get("output"):
         return _download(data["output"][0], output_path)
 
+    # Prefer the explicit fetch_result URL returned by the API (ID already in path).
+    # The v7 fetch endpoint only accepts GET requests, not POST.
+    fetch_result_url = data.get("fetch_result")
     fetch_id = data.get("id") or data.get("fetch_id")
-    if not fetch_id:
-        raise RuntimeError(f"Kling v2.1 returned no fetch_id: {data}")
+    if not fetch_result_url and not fetch_id:
+        raise RuntimeError(f"Kling v2.1 returned no fetch info: {data}")
 
-    return _poll(fetch_id, output_path, fetch_url=_KLING_V21_FETCH, key=key, timeout=300)
+    return _kling_poll(fetch_result_url, fetch_id, output_path, key, timeout=300)
 
 
 # ---------------------------------------------------------------------------
@@ -182,8 +185,8 @@ def _modelslab_basic(image_path: str, output_path: str, duration: int, key: str)
         "init_image": image_url,
         "motion_bucket_id": 40,
         "noise_aug_strength": 0.02,
-        "fps": 8,
-        "num_frames": duration * 8,
+        "fps": 16,
+        "num_frames": duration * 16,
         "width": 768,
         "height": 768,
         "webhook": None,
@@ -209,7 +212,50 @@ def _modelslab_basic(image_path: str, output_path: str, duration: int, key: str)
 
 
 # ---------------------------------------------------------------------------
-# ModelsLab poll helper
+# Kling v2.1 GET-based poll (v7 fetch endpoint only accepts GET, not POST)
+# ---------------------------------------------------------------------------
+
+def _kling_poll(
+    fetch_result_url: Optional[str],
+    fetch_id: Optional[str],
+    output_path: str,
+    key: str,
+    timeout: int = 300,
+) -> str:
+    """Poll the Kling v2.1 fetch endpoint via GET until the clip is ready."""
+    # Build the URL: prefer the explicit fetch_result returned by the submit API
+    # (already has the ID in the path); fall back to constructing it from base + id.
+    if fetch_result_url:
+        url = fetch_result_url
+    else:
+        url = f"{_KLING_V21_FETCH}/{fetch_id}"
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        time.sleep(15)
+        resp = requests.get(url, params={"key": key}, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+
+        status = data.get("status", "")
+        logger.info("Kling v2.1 poll [%s] status: %s", fetch_id or url, status)
+
+        if status == "success":
+            clip_url = (data.get("output") or [None])[0]
+            if clip_url:
+                return _download(clip_url, output_path)
+            raise RuntimeError("Kling v2.1 success but no output URL in response")
+
+        if status == "error":
+            raise RuntimeError(f"Kling v2.1 generation error: {data.get('message')}")
+
+        # "processing" or "queued" — keep waiting
+
+    raise RuntimeError(f"Kling v2.1 timed out after {timeout}s (id={fetch_id})")
+
+
+# ---------------------------------------------------------------------------
+# ModelsLab v6 POST-based poll helper (basic img2video uses POST fetch)
 # ---------------------------------------------------------------------------
 
 def _poll(fetch_id: str, output_path: str, fetch_url: str, key: str, timeout: int = 180) -> str:
