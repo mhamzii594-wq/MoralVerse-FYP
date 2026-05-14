@@ -44,14 +44,20 @@ def _clean_json(content: str) -> str:
 def _get_provider(override: str | None = None) -> str:
     if override and override.lower() in {"openai", "gemini", "groq", "modelslab", "stub"}:
         return override.lower()
-    return (os.getenv("LLM_PROVIDER") or "modelslab").lower()
+    env_provider = os.getenv("LLM_PROVIDER", "").lower()
+    if env_provider in {"openai", "gemini", "groq", "modelslab"}:
+        return env_provider
+    # No provider explicitly configured — prefer Groq (reliable JSON, free) when key is set
+    if os.getenv("GROQ_API_KEY"):
+        return "groq"
+    return "modelslab"
 
 
 # ---------------------------------------------------------------------------
 # Shared LLM caller  (avoids repeating provider logic in every function)
 # ---------------------------------------------------------------------------
 
-def _call_llm(provider: str, system: str, user: str) -> str:
+def _call_llm(provider: str, system: str, user: str, temperature: float = 0.95) -> str:
     """Call the given provider and return raw text content."""
     if provider == "modelslab":
         # ModelsLab v7 LLM API is OpenAI-compatible — use OpenAI SDK with custom base_url
@@ -68,7 +74,7 @@ def _call_llm(provider: str, system: str, user: str) -> str:
                 {"role": "user", "content": user},
             ],
             max_tokens=2048,
-            temperature=0.95,
+            temperature=temperature,
             top_p=0.95,
         )
         result = (resp.choices[0].message.content or "").strip()
@@ -99,9 +105,27 @@ def _call_llm(provider: str, system: str, user: str) -> str:
             model=groq_model,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
             max_tokens=2048,
-            temperature=0.95,
+            temperature=temperature,
         )
         return resp.choices[0].message.content or ""
+
+
+def _call_llm_with_retry(
+    provider: str, system: str, user: str, temperature: float = 0.95, retries: int = 3
+) -> str:
+    """Call _call_llm with exponential back-off retry on transient failures."""
+    last_exc: Exception = RuntimeError("no attempts made")
+    for attempt in range(retries):
+        try:
+            return _call_llm(provider, system, user, temperature)
+        except Exception as exc:
+            last_exc = exc
+            if attempt < retries - 1:
+                wait = 2 ** attempt  # 1s, 2s before final raise
+                logger.debug("LLM %s attempt %d failed, retrying in %ds: %s", provider, attempt + 1, wait, exc)
+                import time as _time
+                _time.sleep(wait)
+    raise last_exc
 
 
 # ---------------------------------------------------------------------------
@@ -258,7 +282,9 @@ def _generate_image_prompts_for_scenes(
         "  ✓ 'a folded white envelope sealed with red wax' not 'a letter'\n"
         "  ✓ 'a shiny red bicycle with silver handlebars and a black seat' not 'a bike'\n"
         "  ✓ 'a small injured brown sparrow with one drooping wing' not 'a bird'\n"
-        "  If scene has multiple objects, list all: 'a blue lunchbox and a wrapped white sandwich'\n\n"
+        "  If scene has multiple objects, list all: 'a blue lunchbox and a wrapped white sandwich'\n"
+        "  PROP CONSISTENCY: If a prop appeared in an earlier scene, use the exact same "
+        "description (same color, size, material) — do not abbreviate or vary it.\n\n"
 
         "FIELD 3 — setting  (REQUIRED, never empty)\n"
         "  Location name + exactly 2 specific visible background elements.\n"
@@ -335,6 +361,19 @@ def _generate_image_prompts_for_scenes(
         '  "lighting": "warm bright indoor cafeteria light"\n'
         "}\n\n"
 
+        "── CONCLUSION (moral lesson — no physical event, translate lesson into body language) ──\n"
+        f"Scene: \"{child_name} understood that kindness always comes back to you. She felt peaceful and happy.\"\n"
+        "Output:\n"
+        "{\n"
+        '  "action": "standing upright with a soft warm smile, both hands relaxed at sides, '
+        'head slightly raised, chest open and at ease",\n'
+        '  "props": "",\n'
+        '  "setting": "school playground with sunlit green grass and other children '
+        'playing happily in the background",\n'
+        '  "others": "",\n'
+        '  "lighting": "warm bright golden sunlight"\n'
+        "}\n\n"
+
         "══════════════════════════════════════════════\n"
         "OUTPUT FORMAT\n"
         "══════════════════════════════════════════════\n"
@@ -351,7 +390,7 @@ def _generate_image_prompts_for_scenes(
     user_msg = "Generate the 5 visual fields for each of these scenes:\n" + "\n".join(scene_lines)
 
     try:
-        content = _call_llm(provider, system, user_msg)
+        content = _call_llm_with_retry(provider, system, user_msg, temperature=0.7)
         if content:
             data = _json.loads(_clean_json(content))
             field_list = data.get("scenes", [])
@@ -723,7 +762,7 @@ def _generate_video_prompts_for_scenes(
     )
 
     try:
-        content = _call_llm(provider, system, user_msg)
+        content = _call_llm_with_retry(provider, system, user_msg, temperature=0.65)
         logger.debug("Pass-3 raw response: %s", content[:300])
         data = _json.loads(_clean_json(content))
         prompt_list = data.get("scenes", [])
@@ -815,7 +854,7 @@ def _generate_story_with_llm(
         f"Create a UNIQUE story — do not reuse plot points from any previous story."
     )
 
-    content_p1 = _call_llm(provider, system_p1, user_p1)
+    content_p1 = _call_llm_with_retry(provider, system_p1, user_p1)
     data = _json.loads(_clean_json(content_p1))
     data["avatar_used"] = bool(input_data.get("avatar_path"))
     data["character_anchor"] = character_anchor
@@ -955,7 +994,7 @@ def regenerate_story_after_decision(
         if attempt_provider == "modelslab" and not os.getenv("MODELSLAB_API_KEY"):
             continue
         try:
-            content = _call_llm(attempt_provider, system_p1, user_p1)
+            content = _call_llm_with_retry(attempt_provider, system_p1, user_p1)
             data = _json.loads(_clean_json(content))
             data["avatar_used"] = bool(input_data.get("avatar_path"))
             data["character_anchor"] = character_anchor

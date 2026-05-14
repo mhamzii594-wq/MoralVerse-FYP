@@ -137,8 +137,13 @@ def generate_story_video(user_input_id: int) -> str:
                 image_prompt = f"{image_prompt}, {character_anchor}"
 
             if scene.image_path:
-                logger.info(f"Reusing existing image for scene {scene_id}: {scene.image_path}")
-                scene_images[i] = scene.image_path
+                _img_full = Path(settings.MEDIA_ROOT) / scene.image_path
+                if _img_full.exists() and _img_full.stat().st_size > 10_000:
+                    logger.info(f"Reusing existing image for scene {scene_id}: {scene.image_path}")
+                    scene_images[i] = scene.image_path
+                else:
+                    logger.warning(f"Scene {scene_id} image in DB but missing/small on disk — regenerating")
+                    image_tasks.append((i, scene_data, scene, image_prompt))
             else:
                 image_tasks.append((i, scene_data, scene, image_prompt))
 
@@ -196,8 +201,13 @@ def generate_story_video(user_input_id: int) -> str:
             scene_text = scene_data.get('text', '') or f"Scene {scene_data.get('id')}"
 
             if scene.audio_path:
-                logger.info(f"Reusing existing audio for scene {scene_id}: {scene.audio_path}")
-                scene_audio[i] = scene.audio_path
+                _aud_full = Path(settings.MEDIA_ROOT) / scene.audio_path
+                if _aud_full.exists() and _aud_full.stat().st_size > 5_000:
+                    logger.info(f"Reusing existing audio for scene {scene_id}: {scene.audio_path}")
+                    scene_audio[i] = scene.audio_path
+                else:
+                    logger.warning(f"Scene {scene_id} audio in DB but missing/small on disk — regenerating")
+                    audio_tasks.append((i, scene_data, scene, scene_text))
             else:
                 audio_tasks.append((i, scene_data, scene, scene_text))
 

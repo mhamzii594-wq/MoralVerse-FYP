@@ -169,7 +169,9 @@ def _generate_modelslab(prompt: str, options: Dict[str, Any]) -> str:
             "totoro, spirited away characters, no-face, calcifer, howl, ghibli mascots, "
             "anime mascots, copyright characters, brand mascots, "
             "adult, man, woman, grown-up, teenager, elderly, adult face, mature features, "
-            "realistic human proportions, tall person, full grown adult",
+            "realistic human proportions, tall person, full grown adult, "
+            "text, watermark, label, logo, signature, cropped, cut off, out of frame, "
+            "duplicate characters, extra person, multiple children, crowd",
         )
         payload = {
             "key": api_key,
@@ -181,8 +183,8 @@ def _generate_modelslab(prompt: str, options: Dict[str, Any]) -> str:
             "width": width,
             "height": height,
             "samples": "1",
-            "num_inference_steps": "20",
-            "guidance_scale": 6.0,
+            "num_inference_steps": "30",
+            "guidance_scale": 6.5,
             "safety_checker": "no",
             "enhance_prompt": "no",
         }
@@ -197,7 +199,9 @@ def _generate_modelslab(prompt: str, options: Dict[str, Any]) -> str:
             "totoro, spirited away characters, no-face, calcifer, howl, ghibli mascots, "
             "anime mascots, copyright characters, brand mascots, "
             "adult, man, woman, grown-up, teenager, elderly, adult face, mature features, "
-            "realistic human proportions, tall person, full grown adult"
+            "realistic human proportions, tall person, full grown adult, "
+            "text, watermark, label, logo, signature, cropped, cut off, out of frame, "
+            "duplicate characters, extra person, multiple children, crowd"
         )
         neg = options.get("negative_prompt", _base_neg + ", " + _outfit_color_negatives(prompt))
         # text2img: FLUX Dev — highest quality scene images
@@ -209,8 +213,8 @@ def _generate_modelslab(prompt: str, options: Dict[str, Any]) -> str:
             "width": width,
             "height": height,
             "samples": "1",
-            "num_inference_steps": "20",
-            "guidance_scale": 7.0,
+            "num_inference_steps": "30",
+            "guidance_scale": 7.5,
             "safety_checker": "no",
             "enhance_prompt": "no",
         }
@@ -571,21 +575,24 @@ _ALL_SHIRT_COLORS = [
     "white", "black", "brown", "grey", "gray", "teal", "cyan",
 ]
 
+_OUTFIT_GARMENTS = ["t-shirt", "shirt", "dress", "skirt", "uniform", "salwar", "kameez"]
+
 def _outfit_color_negatives(prompt: str) -> str:
     """
-    Extract the shirt/top color from the prompt and return a negative-prompt
-    string blocking all other shirt colors. Prevents FLUX/SD from drifting the
-    outfit color between scenes (e.g. red t-shirt → blue shirt in scene 3).
+    Extract the outfit color from the prompt and return a negative-prompt
+    string blocking all other outfit colors. Prevents FLUX/SD from drifting the
+    outfit color between scenes. Covers shirts, dresses, skirts, and ethnic wear.
     """
     prompt_lower = prompt.lower()
     for color in _ALL_SHIRT_COLORS:
-        if f"{color} t-shirt" in prompt_lower or f"{color} shirt" in prompt_lower:
-            wrong = [c for c in _ALL_SHIRT_COLORS if c != color]
-            return (
-                ", ".join(f"{c} shirt" for c in wrong)
-                + ", wrong shirt color, outfit color change, different outfit"
-            )
-    return "wrong shirt color, outfit color change"
+        for garment in _OUTFIT_GARMENTS:
+            if f"{color} {garment}" in prompt_lower:
+                wrong = [c for c in _ALL_SHIRT_COLORS if c != color]
+                return (
+                    ", ".join(f"{c} {garment}" for c in wrong)
+                    + ", wrong outfit color, outfit color change, different outfit"
+                )
+    return "wrong outfit color, outfit color change"
 
 
 _SD_STYLE_KEYWORDS = {
