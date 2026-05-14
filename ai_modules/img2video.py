@@ -162,8 +162,15 @@ def _kling_v21(image_path: str, output_path: str, duration: int, prompt: str, ke
     if data.get("status") == "success" and data.get("output"):
         return _download(data["output"][0], output_path)
 
-    # Prefer the explicit fetch_result URL returned by the API (ID already in path).
-    # The v7 fetch endpoint only accepts GET requests, not POST.
+    # ModelsLab provides a pre-signed CDN URL in future_links — poll that with HEAD
+    # until the video is ready (returns 200) then download.  This is more reliable
+    # than the fetch_result endpoint which currently returns {"status":"error","message":""}
+    # regardless of the job state.
+    future_links = data.get("future_links") or []
+    if future_links:
+        return _kling_poll_cdn(future_links[0], output_path, timeout=300)
+
+    # Fallback to the fetch_result URL approach (GET-based, no POST)
     fetch_result_url = data.get("fetch_result")
     fetch_id = data.get("id") or data.get("fetch_id")
     if not fetch_result_url and not fetch_id:
@@ -186,7 +193,7 @@ def _modelslab_basic(image_path: str, output_path: str, duration: int, key: str)
         "motion_bucket_id": 40,
         "noise_aug_strength": 0.02,
         "fps": 16,
-        "num_frames": duration * 16,
+        "num_frames": min(duration * 16, 120),  # API caps at 120 frames max
         "width": 768,
         "height": 768,
         "webhook": None,
@@ -209,6 +216,32 @@ def _modelslab_basic(image_path: str, output_path: str, duration: int, key: str)
         raise RuntimeError(f"ModelsLab returned no fetch_id: {data}")
 
     return _poll(fetch_id, output_path, fetch_url=_MODELSLAB_FETCH, key=key, timeout=180)
+
+
+# ---------------------------------------------------------------------------
+# Kling v2.1 CDN poll — HEAD-poll the future_links URL until the clip is ready
+# ---------------------------------------------------------------------------
+
+def _kling_poll_cdn(cdn_url: str, output_path: str, timeout: int = 300) -> str:
+    """
+    Poll the pre-signed CDN URL from future_links[] until it returns HTTP 200,
+    then download the completed clip.
+
+    The fetch_result endpoint currently returns {"status":"error","message":""}
+    regardless of job state, but the CDN URL is reliably populated within the ETA.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        time.sleep(15)
+        try:
+            resp = requests.head(cdn_url, timeout=15, allow_redirects=True)
+            logger.info("Kling CDN poll: HTTP %s  url=%s", resp.status_code, cdn_url)
+            if resp.status_code == 200:
+                return _download(cdn_url, output_path)
+        except Exception as exc:
+            logger.debug("Kling CDN HEAD check error: %s", exc)
+
+    raise RuntimeError(f"Kling clip not available at CDN after {timeout}s — url={cdn_url}")
 
 
 # ---------------------------------------------------------------------------
