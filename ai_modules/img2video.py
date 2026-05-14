@@ -224,24 +224,27 @@ def _modelslab_basic(image_path: str, output_path: str, duration: int, key: str)
 
 def _kling_poll_cdn(cdn_url: str, output_path: str, timeout: int = 300) -> str:
     """
-    Poll the pre-signed CDN URL from future_links[] until it returns HTTP 200,
-    then download the completed clip.
+    Poll the pre-signed CDN URL from future_links[] until the video file is ready.
 
-    The fetch_result endpoint currently returns {"status":"error","message":""}
-    regardless of job state, but the CDN URL is reliably populated within the ETA.
+    The CDN returns HTTP 200 with Content-Length: 0 as a placeholder while the
+    generation is still running. Only download when Content-Length > 0 (actual video).
     """
     deadline = time.time() + timeout
     while time.time() < deadline:
         time.sleep(15)
         try:
             resp = requests.head(cdn_url, timeout=15, allow_redirects=True)
-            logger.info("Kling CDN poll: HTTP %s  url=%s", resp.status_code, cdn_url)
-            if resp.status_code == 200:
+            content_length = int(resp.headers.get("Content-Length", 0))
+            logger.info(
+                "Kling CDN poll: HTTP %s  bytes=%d  url=%s",
+                resp.status_code, content_length, cdn_url,
+            )
+            if resp.status_code == 200 and content_length > 10_000:
                 return _download(cdn_url, output_path)
         except Exception as exc:
             logger.debug("Kling CDN HEAD check error: %s", exc)
 
-    raise RuntimeError(f"Kling clip not available at CDN after {timeout}s — url={cdn_url}")
+    raise RuntimeError(f"Kling clip not ready at CDN after {timeout}s — url={cdn_url}")
 
 
 # ---------------------------------------------------------------------------
