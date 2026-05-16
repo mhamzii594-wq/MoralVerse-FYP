@@ -6,7 +6,7 @@ produces a short animated talking-head video whose mouth movements are
 lip-synced to the audio.  The result is composited onto each Kling scene
 clip by the cinematic assembly engine.
 
-API: https://modelslab.com/api/v6/video/sad_talker
+Tries v6 endpoint first; falls back to v5 if v6 returns an error response.
 """
 
 import os
@@ -17,8 +17,15 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_SADTALKER_SUBMIT = "https://modelslab.com/api/v6/video/sad_talker"
-_SADTALKER_FETCH  = "https://modelslab.com/api/v6/video/fetch"
+# ModelsLab has two known SadTalker endpoints — try v6 first, fall back to v5
+_SADTALKER_SUBMIT_V6 = "https://modelslab.com/api/v6/video/sad_talker"
+_SADTALKER_SUBMIT_V5 = "https://modelslab.com/api/v5/live_portraits/sadtalker"
+_SADTALKER_FETCH_V6  = "https://modelslab.com/api/v6/video/fetch"
+_SADTALKER_FETCH_V5  = "https://modelslab.com/api/v5/live_portraits/fetch"
+
+# Keep legacy names for backward compatibility
+_SADTALKER_SUBMIT = _SADTALKER_SUBMIT_V6
+_SADTALKER_FETCH  = _SADTALKER_FETCH_V6
 
 
 def _modelslab_key() -> str:
@@ -76,31 +83,48 @@ def generate_lipsync_clip(avatar_path: str, audio_path: str, output_path: str) -
         "track_id": None,
     }
 
-    resp = requests.post(_SADTALKER_SUBMIT, json=payload, timeout=60)
-    resp.raise_for_status()
-    data = resp.json()
-    logger.info("SadTalker submit response: %s", data)
+    # Try v6 first, fall back to v5 if v6 returns an error status
+    fetch_url = _SADTALKER_FETCH_V6
+    for submit_url, fetch_endpoint in [
+        (_SADTALKER_SUBMIT_V6, _SADTALKER_FETCH_V6),
+        (_SADTALKER_SUBMIT_V5, _SADTALKER_FETCH_V5),
+    ]:
+        logger.info("lipsync [SadTalker]: trying endpoint %s", submit_url)
+        try:
+            resp = requests.post(submit_url, json=payload, timeout=60)
+            resp.raise_for_status()
+            data = resp.json()
+            logger.info("SadTalker submit response (%s): status=%s", submit_url, data.get("status"))
+        except Exception as exc:
+            logger.warning("SadTalker submit failed (%s): %s", submit_url, exc)
+            continue
 
-    if data.get("status") == "error":
-        raise RuntimeError(f"SadTalker submit error: {data.get('message')}")
+        if data.get("status") == "error":
+            logger.warning("SadTalker %s returned error: %s — trying next endpoint", submit_url, data.get("message"))
+            continue
 
-    if data.get("status") == "success" and data.get("output"):
-        return _download(data["output"][0], output_path)
+        if data.get("status") == "success" and data.get("output"):
+            return _download(data["output"][0], output_path)
 
-    fetch_id = data.get("id") or data.get("fetch_id")
-    if not fetch_id:
-        raise RuntimeError(f"SadTalker returned no fetch_id: {data}")
+        fetch_id = data.get("id") or data.get("fetch_id")
+        if not fetch_id:
+            logger.warning("SadTalker %s returned no fetch_id: %s", submit_url, data)
+            continue
 
-    return _poll(fetch_id, output_path, key)
+        fetch_url = fetch_endpoint
+        return _poll(fetch_id, output_path, key, fetch_url=fetch_url)
+
+    raise RuntimeError("SadTalker: all endpoints failed — lipsync unavailable")
 
 
-def _poll(fetch_id: str, output_path: str, key: str, timeout: int = 240) -> str:
+def _poll(fetch_id: str, output_path: str, key: str, timeout: int = 240,
+          fetch_url: str = _SADTALKER_FETCH_V6) -> str:
     deadline = time.time() + timeout
     payload = {"key": key, "request_id": fetch_id}
 
     while time.time() < deadline:
         time.sleep(15)
-        resp = requests.post(_SADTALKER_FETCH, json=payload, timeout=30)
+        resp = requests.post(fetch_url, json=payload, timeout=30)
         resp.raise_for_status()
         data = resp.json()
 

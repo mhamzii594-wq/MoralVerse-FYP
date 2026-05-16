@@ -162,8 +162,7 @@ def _generate_modelslab(prompt: str, options: Dict[str, Any]) -> str:
         cache_key = options.get("avatar_cache_key") or f"kontext_{hash(image_data[:80])}"
         init_image_url = _upload_image_for_api(img_bytes, cache_key=cache_key)
 
-        neg = options.get(
-            "negative_prompt",
+        _kontext_base_neg = (
             "photorealistic, realistic photograph, realistic skin texture, real person, "
             "photography, 3d render, CGI, blurry, low quality, distorted, bad anatomy, ugly, "
             "totoro, spirited away characters, no-face, calcifer, howl, ghibli mascots, "
@@ -171,7 +170,11 @@ def _generate_modelslab(prompt: str, options: Dict[str, Any]) -> str:
             "adult, man, woman, grown-up, teenager, elderly, adult face, mature features, "
             "realistic human proportions, tall person, full grown adult, "
             "text, watermark, label, logo, signature, cropped, cut off, out of frame, "
-            "duplicate characters, extra person, multiple children, crowd",
+            "duplicate characters, extra person, multiple children, crowd"
+        )
+        neg = options.get(
+            "negative_prompt",
+            _kontext_base_neg + ", " + _outfit_color_negatives(prompt),
         )
         payload = {
             "key": api_key,

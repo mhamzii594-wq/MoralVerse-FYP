@@ -272,7 +272,15 @@ def _generate_image_prompts_for_scenes(
         "    angry            → fists clenched at sides, eyebrows pushed down hard\n"
         "    brave/determined → one foot stepped forward, chin raised, back straight\n"
         "    surprised        → both hands at cheeks, mouth open, eyes wide\n"
-        "    relieved         → shoulders dropping, long exhale, small smile\n\n"
+        "    relieved         → shoulders dropping, long exhale, small smile\n"
+        "    nervous/anxious  → shoulders raised, arms crossed tight, eyes darting side to side\n"
+        "    thrilled         → jumping slightly off ground, both arms flung wide, mouth open in a grin\n"
+        "    lonely/isolated  → sitting hunched, knees pulled up, chin resting on folded arms\n"
+        "    embarrassed      → one hand raised covering cheek, face turned slightly away, eyes down\n"
+        "    disappointed     → head hanging down, arms limp at sides, slow exhale visible\n"
+        "    determined/resolved → jaw set, eyes locked forward, one fist raised at chest level\n"
+        "    exhausted/tired  → leaning against wall or object, eyes half-closed, one hand on forehead\n"
+        "    wondering        → chin tilted up, eyes looking upward and to one side, index finger on lips\n\n"
 
         "FIELD 2 — props  (REQUIRED if scene names any object; empty string if none)\n"
         "  Every physical object named in the scene text, each described with color+size+material.\n"
@@ -374,6 +382,42 @@ def _generate_image_prompts_for_scenes(
         '  "lighting": "warm bright golden sunlight"\n'
         "}\n\n"
 
+        "── DECISION (character at a choice point — show them at the exact moment of decision) ──\n"
+        f"Scene: \"{child_name} found a wallet on the ground. Should he keep the money or return it?\"\n"
+        "Output:\n"
+        "{\n"
+        '  "action": "crouching down on one knee, one hand reaching toward a wallet on the ground, '
+        'head tilted as eyes look at it closely, other hand hovering mid-air",\n'
+        '  "props": "a worn brown leather wallet lying on the dusty ground with a small zip pocket visible",\n'
+        '  "setting": "stone village path with a dusty road surface and low mud-brick walls on both sides",\n'
+        '  "others": "",\n'
+        '  "lighting": "flat grey overcast afternoon light"\n'
+        "}\n\n"
+
+        "── EMOTIONAL STATIC (internal feeling — translate entirely into body posture, no physical event) ──\n"
+        f"Scene: \"{child_name} felt nervous standing at the school entrance, not knowing if anyone would be her friend.\"\n"
+        "Output:\n"
+        "{\n"
+        '  "action": "standing still near a doorway, both arms hugging own chest, shoulders raised high, '
+        'eyes cast downward toward feet, weight shifted to one side",\n'
+        '  "props": "",\n'
+        '  "setting": "school entrance corridor with lockers along the wall and other children walking past in the background",\n'
+        '  "others": "several children in blue school uniforms walking past without looking, each carrying a schoolbag",\n'
+        '  "lighting": "cold flat indoor fluorescent light"\n'
+        "}\n\n"
+
+        "══════════════════════════════════════════════\n"
+        "NARRATION MATCH — CRITICAL RULE\n"
+        "══════════════════════════════════════════════\n"
+        "The 5 fields you output MUST together make it visually obvious what the narration is about.\n"
+        "A viewer looking at the generated image, without reading the scene text, must be able to tell:\n"
+        "  (a) WHAT the character is physically doing right now\n"
+        "  (b) WHAT object(s) are involved\n"
+        "  (c) WHERE the scene takes place\n"
+        "If the narration says 'returned the wallet' → the image must show a hand giving a wallet.\n"
+        "If the narration says 'climbed the tree' → the image must show the character on the tree.\n"
+        "NEVER generate a generic standing/smiling pose when the scene describes a specific action.\n\n"
+
         "══════════════════════════════════════════════\n"
         "OUTPUT FORMAT\n"
         "══════════════════════════════════════════════\n"
@@ -455,51 +499,68 @@ _SKIP_WORDS = frozenset({
 def _assemble_scene_prompt(anchor: str, fields: dict) -> str:
     """
     Build the final FLUX prompt deterministically from the LLM's 5 visual fields.
-    The anchor (character identity) and style tag are injected here by Python —
-    the LLM never touches them, so they cannot be paraphrased or omitted.
+    Action is placed FIRST so FLUX's early-token weighting emphasises what the
+    character is doing, not just who they are. Anchor and style tag are injected
+    by Python and cannot be paraphrased or omitted by the LLM.
     """
-    parts = [anchor]
-    for key in ("action", "props", "setting", "others", "lighting"):
+    action = (fields.get("action") or "").strip().rstrip(",.")
+    parts = []
+    if action:
+        parts.append(action)   # ACTION FIRST — most important visual cue for FLUX
+    parts.append(anchor)       # then character identity
+    for key in ("props", "setting", "others", "lighting"):
         val = (fields.get(key) or "").strip().rstrip(",.")
         if val:
             parts.append(val)
     return ", ".join(parts) + ". " + _STYLE_TAG
 
 
+_SHORT_SKIP = frozenset({
+    "the", "a", "an", "and", "but", "or", "in", "on", "at", "to", "of", "for",
+    "with", "by", "from", "up", "out", "so", "as", "if", "it", "is", "was",
+    "are", "were", "be", "has", "had", "did", "not", "she", "he", "his",
+    "her", "its", "they", "them", "all", "one", "two", "can", "may", "will",
+    "this", "that", "who", "into", "than", "him", "got", "get", "saw", "see",
+    "had", "went", "did", "too", "now", "our", "its", "own", "new", "old",
+})
+
+_EMOTION_WORDS_PATCH = frozenset({
+    "scared", "afraid", "guilty", "happy", "proud", "angry", "brave",
+    "terrif", "excited", "worried", "nervous", "ashamed", "joyful",
+    "miserable", "lonely", "confused", "deter", "hoped", "wished",
+    "realiz", "decid", "wonder", "reliev", "disappoint", "thrilled",
+    "embarrass", "exhaust", "frustrat", "delight", "content", "jealous",
+})
+
+
 def _validate_and_patch_prompt(prompt: str, scene_text: str, anchor: str) -> str:
     """
     Two-pass validation after assembly:
-    1. Anchor integrity — if the prompt doesn't start with the anchor, prepend it.
-    2. Noun coverage — extract the 6 most content-bearing nouns from the scene text
-       and check they appear in the prompt. If more than 2 are missing, append them.
-    This ensures the image always reflects what the scene is actually about.
+    1. Anchor integrity — if the prompt doesn't contain the anchor start, prepend it.
+    2. Noun coverage — extract up to 8 content words from the scene text (including
+       short action verbs) and patch any missing ones. Threshold is >= 1 missing word
+       (was > 2) so even a single absent key term triggers a patch.
     """
-    # Pass 1: anchor must be first
-    if not prompt.lower().startswith(anchor[:25].lower()):
+    # Pass 1: anchor must appear early in the prompt
+    if anchor[:25].lower() not in prompt.lower():
         prompt = anchor + ", " + prompt
 
-    # Pass 2: key noun coverage
+    # Pass 2: key content-word coverage (includes short verbs like run/hit/eat/fly)
     scene_words = [
         w.lower().strip(".,!?\"'-()")
         for w in scene_text.split()
-        if len(w) > 4 and w.lower().strip(".,!?\"'-()") not in _SKIP_WORDS
+        if len(w) > 2 and w.lower().strip(".,!?\"'-()") not in _SHORT_SKIP
+        and w.lower().strip(".,!?\"'-()") not in _SKIP_WORDS
     ]
-    # Exclude emotion-only words — they have no pixel representation
-    _emotion_words = frozenset({
-        "scared", "afraid", "guilty", "happy", "proud", "angry", "brave",
-        "terrif", "excited", "worried", "nervous", "ashamed", "joyful",
-        "miserable", "lonely", "confused", "deter", "hoped", "wished",
-        "realiz", "decid", "wonder", "reliev", "disappoint",
-    })
     content_nouns = [
         w for w in scene_words
-        if not any(w.startswith(e) for e in _emotion_words)
-    ][:6]
+        if not any(w.startswith(e) for e in _EMOTION_WORDS_PATCH)
+    ][:8]  # check up to 8 content words (was 6)
 
     prompt_lower = prompt.lower()
     missing = [w for w in content_nouns if w not in prompt_lower]
-    if len(missing) > 2:
-        patch = ", ".join(missing[:3])
+    if len(missing) >= 1:   # patch if ANY content word is absent (was > 2)
+        patch = ", ".join(missing[:4])
         prompt = prompt.rstrip(". ") + f", {patch}."
 
     return prompt
@@ -724,6 +785,11 @@ def _generate_video_prompts_for_scenes(
         "  Sentence 2 — CAMERA + ENVIRONMENT: how the camera moves AND what moves in the background.\n\n"
 
         "STRICT RULES:\n"
+        "  - NARRATION SYNC: The motion you write must animate EXACTLY what the narration describes. "
+        "If narration says 'climbed the tree' → character climbs. "
+        "'returned the wallet' → arm extends handing object. "
+        "'found a wallet' → character stops and crouches toward ground. "
+        "NEVER write generic idle animation (swaying, blinking) when a specific action is narrated.\n"
         "  - MOTION ONLY — never describe colour, composition, or art style (the image already shows those).\n"
         "  - Be specific: 'steps forward with left foot, arms swinging, head turning right to look' "
         "not just 'walks'.\n"
@@ -731,6 +797,8 @@ def _generate_video_prompts_for_scenes(
         "static wide · gentle pan · dynamic tracking shot.\n"
         "  - For OPENING scenes: use wide establishing shot slowly pushing in.\n"
         "  - For CLOSING scenes: use slow pull back to reveal the full environment.\n"
+        "  - For DECISION scenes (scene contains a choice/question): zoom in on character's hesitating face or hand.\n"
+        "  - For EMOTIONAL/STATIC scenes (character feeling, not doing): animate the body posture change — head drooping, shoulders curling, etc.\n"
         "  - End every prompt with exactly these 5 words: 'Smooth 2D anime, cel-shaded.'\n"
         "  - Max 300 characters per prompt including the closing 5 words.\n"
         "  - Return ONLY valid JSON. No markdown fences. No explanation.\n\n"
@@ -753,6 +821,16 @@ def _generate_video_prompts_for_scenes(
         "[CLOSING scene] \"Tooba smiled as the clean well sparkled in the afternoon light.\"\n"
         "→ {\"video_prompt\": \"Character turns toward the camera, face brightening with a warm smile, "
         "arms relaxing at sides. Camera pulls back slowly to reveal the full farm; birds fly across sky. "
+        "Smooth 2D anime, cel-shaded.\"}\n\n"
+
+        "[DECISION scene] \"She found a wallet on the street. Should she keep the money or return it?\"\n"
+        "→ {\"video_prompt\": \"Character stops walking, crouches slowly toward ground, hand reaching out toward wallet. "
+        "Camera slow push in to hand and wallet; dust particles drift across scene. "
+        "Smooth 2D anime, cel-shaded.\"}\n\n"
+
+        "[EMOTIONAL scene — no physical action] \"Omar felt deeply ashamed and could not look up.\"\n"
+        "→ {\"video_prompt\": \"Character's head bows forward slowly, shoulders curling inward, one hand rising to cover face. "
+        "Camera holds close on face; soft shadow grows across scene. "
         "Smooth 2D anime, cel-shaded.\"}"
     )
 
@@ -767,12 +845,29 @@ def _generate_video_prompts_for_scenes(
         data = _json.loads(_clean_json(content))
         prompt_list = data.get("scenes", [])
         if isinstance(prompt_list, list) and len(prompt_list) == len(scenes):
+            _REQUIRED_ENDING = "Smooth 2D anime, cel-shaded."
+            _MAX_VP_CHARS = 310
             result = []
             for p in prompt_list:
                 if not isinstance(p, dict):
                     result.append(None)
                     continue
                 vp = (p.get("video_prompt") or "").strip()
+                if vp:
+                    # Enforce required ending tag
+                    if not vp.endswith(_REQUIRED_ENDING):
+                        base = vp.rstrip(". ")
+                        candidate = base + ". " + _REQUIRED_ENDING
+                        if len(candidate) <= _MAX_VP_CHARS:
+                            vp = candidate
+                        else:
+                            available = _MAX_VP_CHARS - len(". " + _REQUIRED_ENDING)
+                            vp = base[:available].rstrip() + ". " + _REQUIRED_ENDING
+                    # Enforce char limit (trim if over, preserving the required ending)
+                    elif len(vp) > _MAX_VP_CHARS:
+                        base = vp[: -len(_REQUIRED_ENDING)].rstrip(". ")
+                        available = _MAX_VP_CHARS - len(". " + _REQUIRED_ENDING)
+                        vp = base[:available].rstrip() + ". " + _REQUIRED_ENDING
                 result.append(vp if vp else None)
             valid = sum(1 for r in result if r)
             logger.info("Pass-3 video prompts generated: %d/%d valid", valid, len(result))

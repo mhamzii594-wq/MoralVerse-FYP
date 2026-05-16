@@ -39,6 +39,29 @@ def _find_subtitle_font() -> str | None:
     if env_font and os.path.exists(env_font):
         return env_font
 
+    # Urdu-capable fonts first (support Arabic/Naskh script for Urdu subtitles)
+    urdu_candidates = [
+        r"C:\Windows\Fonts\NotoNaskhArabic-Regular.ttf",
+        r"C:\Windows\Fonts\times.ttf",           # Times New Roman has partial Arabic
+        "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",
+        "/usr/share/fonts/noto/NotoNaskhArabic-Regular.ttf",
+        "/usr/share/fonts/opentype/noto/NotoNaskhArabic-Regular.otf",
+    ]
+    # Check project assets/fonts/ bundle (ship Noto with the app for server deployments)
+    import pathlib as _pathlib
+    _assets_dir = _pathlib.Path(__file__).parent.parent / "assets" / "fonts"
+    for _fname in ("NotoNaskhArabic-Regular.ttf", "NotoSansArabic-Regular.ttf",
+                   "NotoNastaliqUrdu-Regular.ttf"):
+        _bundled = str(_assets_dir / _fname)
+        urdu_candidates.insert(0, _bundled)
+
+    for path in urdu_candidates:
+        if os.path.exists(path):
+            logger.info("Subtitle font (Urdu-capable): %s", path)
+            return path
+
+    # Latin fallback fonts (used for English subtitles only)
     candidates = [
         r"C:\Windows\Fonts\arial.ttf",
         r"C:\Windows\Fonts\calibri.ttf",
