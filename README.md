@@ -78,4 +78,4 @@ For Ghibli-style images and avatar conversion, the local model server must be ru
 ---
 
 **Developed for the Final Year Project (FYP) Submission.**
-**Deadline:** April 25th, 12 AM.
+
