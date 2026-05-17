@@ -965,7 +965,7 @@ def _generate_story_with_llm(
         "  - Scene flow: (1) intro/setup, (2) rising action, (3) first challenge + decision, "
         "(4) consequence of decision, (5) climax + second decision, (6) resolution with moral lesson.\n"
         f"  - All scene `text` and decision texts in {language_label}.\n"
-        "  - Each scene `text` must be 30-80 words (2-3 sentences). Long enough to narrate, short enough that the animated clip does not loop repeatedly.\n"
+        "  - Each scene `text` must be 20-40 words (1-2 sentences). Keep it tight — one clear action per scene.\n"
         "  - Each scene `text` must contain a VISIBLE PHYSICAL ACTION — something that can be shown in an image.\n"
         "    GOOD: 'Ali picked up the wallet from the dusty road.' (physical, visible)\n"
         "    BAD:  'Ali thought about what he should do.' (inner thought — invisible, cannot be illustrated)\n"

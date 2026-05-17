@@ -78,7 +78,7 @@ def generate_clip(
     # Choose clip length: match audio when available so Kling generates enough content
     effective_duration = duration
     if audio_duration is not None:
-        effective_duration = 10 if audio_duration >= 6.0 else 5
+        effective_duration = 10 if audio_duration >= 10.0 else 5
 
     ml_key = _modelslab_key()
     if ml_key:
