@@ -75,10 +75,9 @@ def generate_clip(
             "smooth camera movement, vivid colors, characters moving naturally"
         )
 
-    # Choose clip length: match audio when available so Kling generates enough content
-    effective_duration = duration
-    if audio_duration is not None:
-        effective_duration = 10 if audio_duration >= 10.0 else 5
+    # Always 5s Kling clips — scenes are 10-12 words (~5s TTS) so clip and
+    # narration finish together with no looping. Keeps API cost per story ~$2.10.
+    effective_duration = 5
 
     ml_key = _modelslab_key()
     if ml_key:
