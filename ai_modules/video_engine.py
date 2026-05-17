@@ -61,6 +61,13 @@ def _find_subtitle_font() -> str | None:
             logger.info("Subtitle font (Urdu-capable): %s", path)
             return path
 
+    logger.error(
+        "No Urdu-capable font found on this system. Urdu subtitles will render as boxes (□□□□). "
+        "Fix: install NotoNaskhArabic-Regular.ttf to /usr/share/fonts/truetype/noto/ and run fc-cache -fv, "
+        "OR copy the font to assets/fonts/ in the project root, "
+        "OR set SUBTITLE_FONT env var to the full path of any Arabic/Urdu TTF font."
+    )
+
     # Latin fallback fonts (used for English subtitles only)
     candidates = [
         r"C:\Windows\Fonts\arial.ttf",

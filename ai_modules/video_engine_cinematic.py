@@ -297,6 +297,15 @@ def generate_scene_clips_parallel(
     for t in threads:
         t.join()
 
+    successful = sum(1 for r in results if r is not None)
+    total = len(scene_images)
+    if successful == 0:
+        logger.error("[cinematic] story=%s: 0/%d Kling clips generated — all scenes will use static image fallback", story_id, total)
+    elif successful < total:
+        logger.warning("[cinematic] story=%s: %d/%d Kling clips generated — %d scene(s) will use static image fallback", story_id, successful, total, total - successful)
+    else:
+        logger.info("[cinematic] story=%s: all %d/%d Kling clips generated successfully", story_id, successful, total)
+
     return results
 
 

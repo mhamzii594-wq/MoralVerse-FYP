@@ -442,10 +442,23 @@ def _generate_image_prompts_for_scenes(
                 prompts = []
                 for scene_data, fields in zip(scenes, field_list):
                     scene_text = scene_data.get("text", "") if isinstance(scene_data, dict) else ""
+                    scene_id = scene_data.get("id", "?") if isinstance(scene_data, dict) else "?"
+                    # Validate required fields — warn so logs surface LLM compliance issues
+                    action_val = (fields.get("action") or "").strip()
+                    setting_val = (fields.get("setting") or "").strip()
+                    lighting_val = (fields.get("lighting") or "").strip()
+                    if not action_val:
+                        logger.warning("Pass-2 scene %s: 'action' empty — scene_text fallback will be used", scene_id)
+                    elif len(action_val.split()) < 5:
+                        logger.warning("Pass-2 scene %s: 'action' suspiciously short (%d words): %s", scene_id, len(action_val.split()), action_val)
+                    if not setting_val:
+                        logger.warning("Pass-2 scene %s: 'setting' empty — FLUX will guess background", scene_id)
+                    if not lighting_val:
+                        logger.warning("Pass-2 scene %s: 'lighting' empty", scene_id)
                     assembled = _assemble_scene_prompt(character_anchor, fields, scene_text)
                     validated = _validate_and_patch_prompt(assembled, scene_text, character_anchor)
                     prompts.append(validated)
-                    logger.info("Pass-2 prompt (%d chars): %s…", len(validated), validated[:80])
+                    logger.info("Pass-2 scene %s prompt (%d chars): %s…", scene_id, len(validated), validated[:80])
                 return prompts
             logger.warning(
                 "Pass-2 returned %d field-sets for %d scenes",
@@ -740,9 +753,11 @@ def _attach_images(
         if not raw_prompt:
             continue
         try:
-            prompt = _enrich_image_prompt(scene_text, raw_prompt)
+            # Use the assembled prompt directly — _validate_and_patch_prompt already
+            # ensures full keyword coverage; _enrich_image_prompt is no longer called
+            # as it prepended raw scene text and broke the action-first token order.
             scene["image_path"] = image_engine.generate_scene_image(
-                prompt,
+                raw_prompt,
                 avatar_path=avatar_path,
                 image_provider=image_provider,
                 scene_text=scene_text,
@@ -884,6 +899,13 @@ def _generate_video_prompts_for_scenes(
                         base = vp[: -len(_REQUIRED_ENDING)].rstrip(". ")
                         available = _MAX_VP_CHARS - len(". " + _REQUIRED_ENDING)
                         vp = base[:available].rstrip() + ". " + _REQUIRED_ENDING
+                    # Validate two sentences and minimum content length
+                    if vp:
+                        content_body = vp[:-len(_REQUIRED_ENDING)].rstrip(". ")
+                        if ". " not in content_body:
+                            logger.warning("Pass-3: single-sentence prompt (expected 2): %s…", vp[:80])
+                        if len(content_body) < 40:
+                            logger.warning("Pass-3: prompt body too short (%d chars before ending tag): %s", len(content_body), vp)
                 result.append(vp if vp else None)
             valid = sum(1 for r in result if r)
             logger.info("Pass-3 video prompts generated: %d/%d valid", valid, len(result))
@@ -954,7 +976,10 @@ def _generate_story_with_llm(
         "    BAD:  A: 'Keep it'   B: 'Return it'  (too short — not enough for the story UI)\n"
         "  - Scene 6 must ONLY resolve the story and state the moral — never introduce new events.\n"
         "  - image_prompt must be an empty string \"\" — it is generated separately.\n"
-        f"  - Make the story age-appropriate for a {child_age}-year-old and rich in detail."
+        f"  - Make the story age-appropriate for a {child_age}-year-old and rich in detail.\n"
+        f"  - Use {child_name}'s name naturally in every scene's first sentence — they are always the subject.\n"
+        "  - Scene 1 must show the character actively doing something specific from the very first sentence — never open with 'Once upon a time there was...' alone.\n"
+        "  - Every scene must be in a DIFFERENT location or show a clear visual change from the previous scene — no two consecutive scenes in identical settings."
     )
 
     _variation_settings = [
