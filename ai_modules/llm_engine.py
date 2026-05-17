@@ -442,7 +442,7 @@ def _generate_image_prompts_for_scenes(
                 prompts = []
                 for scene_data, fields in zip(scenes, field_list):
                     scene_text = scene_data.get("text", "") if isinstance(scene_data, dict) else ""
-                    assembled = _assemble_scene_prompt(character_anchor, fields)
+                    assembled = _assemble_scene_prompt(character_anchor, fields, scene_text)
                     validated = _validate_and_patch_prompt(assembled, scene_text, character_anchor)
                     prompts.append(validated)
                     logger.info("Pass-2 prompt (%d chars): %s…", len(validated), validated[:80])
@@ -467,7 +467,7 @@ def _generate_image_prompts_for_scenes(
                 "others": "",
                 "lighting": "warm natural light",
             }
-            fallbacks.append(_assemble_scene_prompt(character_anchor, fields))
+            fallbacks.append(_assemble_scene_prompt(character_anchor, fields, text))
     return fallbacks
 
 
@@ -486,6 +486,10 @@ _STYLE_TAG = (
     "professional children's book illustration quality."
 )
 
+# Pass 3 constants — defined at module level for consistency and reuse
+_REQUIRED_ENDING = "Smooth 2D anime, cel-shaded."
+_MAX_VP_CHARS = 310
+
 _SKIP_WORDS = frozenset({
     "once", "upon", "time", "then", "that", "this", "with", "from", "were",
     "been", "have", "their", "them", "they", "very", "into", "also", "about",
@@ -496,14 +500,28 @@ _SKIP_WORDS = frozenset({
 })
 
 
-def _assemble_scene_prompt(anchor: str, fields: dict) -> str:
+def _assemble_scene_prompt(anchor: str, fields: dict, scene_text: str = "") -> str:
     """
     Build the final FLUX prompt deterministically from the LLM's 5 visual fields.
     Action is placed FIRST so FLUX's early-token weighting emphasises what the
     character is doing, not just who they are. Anchor and style tag are injected
     by Python and cannot be paraphrased or omitted by the LLM.
+
+    If the LLM returned an empty action field (invariant #3 violation), fall back
+    to the first sentence of the scene text so the anchor never becomes token 1.
     """
     action = (fields.get("action") or "").strip().rstrip(",.")
+    if not action:
+        # Invariant #3 violation — derive a minimal action from scene text so FLUX
+        # still gets an action token before the character anchor.
+        if scene_text:
+            action = scene_text.split(".")[0].strip()
+            logger.warning(
+                "_assemble_scene_prompt: 'action' field empty — using scene text fallback: %s…",
+                action[:60],
+            )
+        else:
+            logger.warning("_assemble_scene_prompt: 'action' field empty and no scene_text — anchor will be first token (invariant #3 broken)")
     parts = []
     if action:
         parts.append(action)   # ACTION FIRST — most important visual cue for FLUX
@@ -845,8 +863,6 @@ def _generate_video_prompts_for_scenes(
         data = _json.loads(_clean_json(content))
         prompt_list = data.get("scenes", [])
         if isinstance(prompt_list, list) and len(prompt_list) == len(scenes):
-            _REQUIRED_ENDING = "Smooth 2D anime, cel-shaded."
-            _MAX_VP_CHARS = 310
             result = []
             for p in prompt_list:
                 if not isinstance(p, dict):
@@ -927,7 +943,15 @@ def _generate_story_with_llm(
         "  - Scene flow: (1) intro/setup, (2) rising action, (3) first challenge + decision, "
         "(4) consequence of decision, (5) climax + second decision, (6) resolution with moral lesson.\n"
         f"  - All scene `text` and decision texts in {language_label}.\n"
-        "  - Each scene `text` must describe ONE clear, specific action or event — what the character does or encounters.\n"
+        "  - Each scene `text` must be 50-150 words. Long enough for narration, short enough to focus on ONE event.\n"
+        "  - Each scene `text` must contain a VISIBLE PHYSICAL ACTION — something that can be shown in an image.\n"
+        "    GOOD: 'Ali picked up the wallet from the dusty road.' (physical, visible)\n"
+        "    BAD:  'Ali thought about what he should do.' (inner thought — invisible, cannot be illustrated)\n"
+        "    Even emotional scenes must anchor to a physical posture: 'Sara sat alone, hugging her knees.'\n"
+        "  - Decision option format: 10-20 words each, describing a SPECIFIC action the child would take.\n"
+        "    GOOD: A: 'Keep the wallet and spend the coins on sweets for himself'\n"
+        "          B: 'Return the wallet to find who it belongs to'\n"
+        "    BAD:  A: 'Keep it'   B: 'Return it'  (too short — not enough for the story UI)\n"
         "  - Scene 6 must ONLY resolve the story and state the moral — never introduce new events.\n"
         "  - image_prompt must be an empty string \"\" — it is generated separately.\n"
         f"  - Make the story age-appropriate for a {child_age}-year-old and rich in detail."
