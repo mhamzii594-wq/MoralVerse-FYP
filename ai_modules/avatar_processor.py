@@ -47,9 +47,8 @@ def convert_to_ghibli_style(image_path: Path) -> Path:
     ext = ".jpg"
 
     neg_prompt = (
-        "photorealistic, realistic photograph, realistic skin texture, soft shading, "
-        "smooth gradient, subsurface scattering, 3d render, CGI, photography, real photo, "
-        "blurry, low quality, bad anatomy, western cartoon, extra limbs, distorted face, "
+        "photorealistic, realistic photograph, realistic skin texture, photography, real photo, "
+        "blurry, low quality, bad anatomy, extra limbs, distorted face, "
         "ugly, deformed, angry expression, scary face, frightening, (gender swap:1.5), "
         "(wrong gender:1.5), (different person:1.4), "
         "adult, man, woman, teenager, young adult, mature face, old face, "
@@ -57,8 +56,8 @@ def convert_to_ghibli_style(image_path: Path) -> Path:
         "different hair color, different hair style, "
         "different clothes, different outfit, outfit change, wardrobe change, naked, "
         "black background, dark background, grey background, busy background, "
-        "cluttered background, colorful background, complex background, "
-        "black areas, black fill, dark fill, "
+        "cluttered background, "
+        "flat 2D cartoon, hand-drawn illustration, cel-shaded, thick black outlines, anime sketch, "
         "text, watermark, cropped, cut off, out of frame"
     )
 
@@ -87,20 +86,17 @@ def convert_to_ghibli_style(image_path: Path) -> Path:
 
     from .image_engine import log_api_error as _log_api_err
 
-    # Style tokens come FIRST — SD/anything-v5 is CLIP-based and weights early tokens most.
-    # Removing "preserve all facial features" — it directly fights anime stylization and
-    # causes near-zero style change (pixel diff stays under 70). High-level identity cues
-    # (gender, hair color, clothing colors) are enough for character recognition.
+    # Transform the uploaded photo into a Pixar 3D animated character.
+    # FLUX Kontext (used in scene generation) works via model_id; for avatar cartoonization
+    # we use the same anything-v5 img2img endpoint but with a Pixar-style prompt since
+    # FLUX Kontext is wired to the scene img2img path. Style tokens come FIRST.
     _img2img_prompt = (
-        "(anime illustration:1.5), (cel shading:1.4), (flat color shading:1.3), "
-        "(thick black outlines:1.3), (simplified cartoon face:1.2), "
-        "(large expressive anime eyes:1.4), vibrant saturated colors, "
-        "clean linework, bright vivid colors, "
-        "(pure white background:1.5), (white background only:1.4), simple background, "
-        "(young child:1.4), (toddler face:1.3), small child, soft round face, "
-        "same gender as reference, same hair color and length, same hair texture, "
-        "same clothing colors and style, same skin tone, gentle smile, "
-        "Hayao Miyazaki hand-drawn illustration style, masterpiece, best quality"
+        "Transform this child into a Pixar 3D animated movie character, "
+        "keep the exact same hair color, hair style, eye color, skin tone, and clothing colors, "
+        "subsurface skin scattering, soft studio rim lighting, smooth 3D CGI render, "
+        "large expressive cartoon eyes, Disney-Pixar movie quality, "
+        "expressive chibi-inspired proportions, pure white background, "
+        "cinematic character portrait, studio quality render, masterpiece, best quality"
     )
 
     def _poll_for_result(req, api_key, prediction_id, eta):

@@ -140,7 +140,7 @@ def _kling_v21(image_path: str, output_path: str, duration: int, prompt: str, ke
     image_url = _public_image_url(image_path)
     logger.info("img2video [Kling v2.1]: %s", image_url)
 
-    kling_duration = "10" if duration >= 8 else "5"
+    kling_duration = "5"  # effective_duration is always 5 (budget mode)
 
     payload = {
         "key": key,
@@ -238,7 +238,7 @@ def _kling_poll_cdn(cdn_url: str, output_path: str, timeout: int = 300) -> str:
                 "Kling CDN poll: HTTP %s  bytes=%d  url=%s",
                 resp.status_code, content_length, cdn_url,
             )
-            if resp.status_code == 200 and content_length > 10_000:
+            if resp.status_code == 200 and content_length > 100_000:
                 return _download(cdn_url, output_path)
         except Exception as exc:
             logger.debug("Kling CDN HEAD check error: %s", exc)

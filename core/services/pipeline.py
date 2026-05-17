@@ -179,8 +179,10 @@ def generate_story_video(user_input_id: int) -> str:
                 if errors:
                     raise RuntimeError(f"Image generation failed for {len(errors)} scene(s): {errors[0]}")
 
-        scene_images = [p for p in scene_images if p]
-        
+        _missing_imgs = [i for i, p in enumerate(scene_images) if not p]
+        if _missing_imgs:
+            logger.error("Pipeline bug: scene images not populated for indices %s — assembly may fail", _missing_imgs)
+
         # Step 3: Generate audio for each scene
         logger.info("Generating audio for scenes...")
         scene_audio = [None] * len(scenes)
@@ -202,7 +204,7 @@ def generate_story_video(user_input_id: int) -> str:
 
             if scene.audio_path:
                 _aud_full = Path(settings.MEDIA_ROOT) / scene.audio_path
-                if _aud_full.exists() and _aud_full.stat().st_size > 5_000:
+                if _aud_full.exists() and _aud_full.stat().st_size > 30_000:
                     logger.info(f"Reusing existing audio for scene {scene_id}: {scene.audio_path}")
                     scene_audio[i] = scene.audio_path
                 else:
@@ -235,8 +237,10 @@ def generate_story_video(user_input_id: int) -> str:
                 if errors:
                     raise RuntimeError(f"Audio generation failed for {len(errors)} scene(s): {errors[0]}")
 
-        scene_audio = [p for p in scene_audio if p]
-        
+        _missing_aud = [i for i, p in enumerate(scene_audio) if not p]
+        if _missing_aud:
+            logger.error("Pipeline bug: scene audio not populated for indices %s — assembly may fail", _missing_aud)
+
         # Step 4: Generate subtitles (Urdu + English) with perfect sync
         logger.info("Generating subtitles...")
         scene_texts = [scene_data.get('text', '') for scene_data in scenes]

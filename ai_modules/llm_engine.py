@@ -489,18 +489,19 @@ def _generate_image_prompts_for_scenes(
 # ---------------------------------------------------------------------------
 
 _STYLE_TAG = (
-    "Flat cel-shaded cartoon illustration, thick black outlines, "
-    "children's picture book style, "
+    "3D rendered Pixar animation style, subsurface skin scattering, "
+    "soft volumetric rim lighting, cinematic depth of field, "
+    "Disney-Pixar CGI movie still frame, rich saturated jewel-toned colors, "
+    "smooth studio quality render, expressive cartoon proportions, "
     "main character centered in frame occupying 60% of frame height, full body head to toe visible, "
     "child-sized compared to surroundings, "
     "the described child is the main character, secondary characters visible when present, "
     "same character consistent appearance throughout, "
-    "highly detailed, sharp crisp outlines, vibrant saturated colors, "
-    "professional children's book illustration quality."
+    "highly detailed, professional animation studio quality."
 )
 
 # Pass 3 constants — defined at module level for consistency and reuse
-_REQUIRED_ENDING = "Smooth 2D anime, cel-shaded."
+_REQUIRED_ENDING = "Cinematic 3D Pixar animation style."
 _MAX_VP_CHARS = 310
 
 _SKIP_WORDS = frozenset({
@@ -807,15 +808,16 @@ def _generate_video_prompts_for_scenes(
             scene_lines.append(f"[{position_label}] Scene {s.get('id', i)}: \"{txt}\"")
 
     system = (
-        "You are an AI video director writing Kling i2v motion scripts for a children's animated story.\n\n"
+        "You are an AI video director writing Kling i2v motion scripts for a children's Pixar-style 3D animated story.\n\n"
 
         f"CHARACTER appearing in every scene: {condensed_char}\n\n"
 
         "For each scene, write a motion script of exactly 2 sentences (max 300 characters total) that tells "
         "the Kling image-to-video AI:\n"
         "  Sentence 1 — CHARACTER MOTION: what the character's body does. "
-        "Name specific limbs, direction, and speed.\n"
-        "  Sentence 2 — CAMERA + ENVIRONMENT: how the camera moves AND what moves in the background.\n\n"
+        "Name specific limbs, direction, and speed. The character is a 3D rendered figure with volume and weight.\n"
+        "  Sentence 2 — CAMERA + ENVIRONMENT: how the camera moves AND what moves in the background. "
+        "Use cinematic 3D camera language — depth of field, bokeh, volumetric light rays.\n\n"
 
         "STRICT RULES:\n"
         "  - NARRATION SYNC: The motion you write must animate EXACTLY what the narration describes. "
@@ -826,14 +828,14 @@ def _generate_video_prompts_for_scenes(
         "  - MOTION ONLY — never describe colour, composition, or art style (the image already shows those).\n"
         "  - Be specific: 'steps forward with left foot, arms swinging, head turning right to look' "
         "not just 'walks'.\n"
-        "  - Camera vocabulary: slow push in · pull back · side-scroll · overhead tilt down · "
-        "static wide · gentle pan · dynamic tracking shot.\n"
-        "  - For OPENING scenes: use wide establishing shot slowly pushing in.\n"
-        "  - For CLOSING scenes: use slow pull back to reveal the full environment.\n"
-        "  - For DECISION scenes (scene contains a choice/question): zoom in on character's hesitating face or hand.\n"
-        "  - For EMOTIONAL/STATIC scenes (character feeling, not doing): animate the body posture change — head drooping, shoulders curling, etc.\n"
-        "  - End every prompt with exactly these 5 words: 'Smooth 2D anime, cel-shaded.'\n"
-        "  - Max 300 characters per prompt including the closing 5 words.\n"
+        "  - Camera vocabulary: slow push in · cinematic pull back · side-scroll · overhead tilt down · "
+        "static wide · gentle pan · shallow depth of field rack focus · dynamic tracking shot.\n"
+        "  - For OPENING scenes: wide establishing shot slowly pushing in, bokeh background.\n"
+        "  - For CLOSING scenes: cinematic pull back to reveal the full environment, warm light rays.\n"
+        "  - For DECISION scenes (scene contains a choice/question): rack focus zoom in on character's hesitating face or hand.\n"
+        "  - For EMOTIONAL/STATIC scenes (character feeling, not doing): animate the body posture change — head drooping, shoulders curling, volumetric light dims.\n"
+        "  - End every prompt with exactly these 6 words: 'Cinematic 3D Pixar animation style.'\n"
+        "  - Max 300 characters per prompt including the closing 6 words.\n"
         "  - Return ONLY valid JSON. No markdown fences. No explanation.\n\n"
 
         "OUTPUT FORMAT:\n"
@@ -842,29 +844,29 @@ def _generate_video_prompts_for_scenes(
 
         "EXAMPLES:\n"
         "[OPENING scene] \"Tooba walked through the farm watching chickens peck at the ground.\"\n"
-        "→ {\"video_prompt\": \"Character walks forward, arms swinging, head turning left toward chickens. "
-        "Wide establishing shot slowly pushing in; chickens bob and peck, grass sways. "
-        "Smooth 2D anime, cel-shaded.\"}\n\n"
+        "→ {\"video_prompt\": \"Character walks forward, arms swinging naturally, head turning left toward chickens. "
+        "Wide establishing shot pushes in slowly; chickens bob and peck, grass sways, bokeh background. "
+        "Cinematic 3D Pixar animation style.\"}\n\n"
 
         "[MIDDLE scene 3/6] \"She noticed the old rusty well filled with debris and decided to clean it.\"\n"
-        "→ {\"video_prompt\": \"Character stops, head snaps toward the well, hands go to hips. "
-        "Camera slow push in to face; leaves drift past, well water ripples faintly. "
-        "Smooth 2D anime, cel-shaded.\"}\n\n"
+        "→ {\"video_prompt\": \"Character stops, head snaps toward the well, hands move to hips with weight. "
+        "Camera rack-focuses to face; leaves drift past, well water ripples, volumetric dust motes. "
+        "Cinematic 3D Pixar animation style.\"}\n\n"
 
         "[CLOSING scene] \"Tooba smiled as the clean well sparkled in the afternoon light.\"\n"
-        "→ {\"video_prompt\": \"Character turns toward the camera, face brightening with a warm smile, "
-        "arms relaxing at sides. Camera pulls back slowly to reveal the full farm; birds fly across sky. "
-        "Smooth 2D anime, cel-shaded.\"}\n\n"
+        "→ {\"video_prompt\": \"Character turns to camera, face brightening into a warm smile, arms relaxing at sides. "
+        "Cinematic pull back reveals full farm; golden light rays sweep across scene, birds take flight. "
+        "Cinematic 3D Pixar animation style.\"}\n\n"
 
         "[DECISION scene] \"She found a wallet on the street. Should she keep the money or return it?\"\n"
-        "→ {\"video_prompt\": \"Character stops walking, crouches slowly toward ground, hand reaching out toward wallet. "
-        "Camera slow push in to hand and wallet; dust particles drift across scene. "
-        "Smooth 2D anime, cel-shaded.\"}\n\n"
+        "→ {\"video_prompt\": \"Character stops walking, crouches slowly, hand reaching toward wallet with hesitation. "
+        "Camera rack-focuses to hand and wallet; dust particles drift, shallow depth of field blurs background. "
+        "Cinematic 3D Pixar animation style.\"}\n\n"
 
         "[EMOTIONAL scene — no physical action] \"Omar felt deeply ashamed and could not look up.\"\n"
-        "→ {\"video_prompt\": \"Character's head bows forward slowly, shoulders curling inward, one hand rising to cover face. "
-        "Camera holds close on face; soft shadow grows across scene. "
-        "Smooth 2D anime, cel-shaded.\"}"
+        "→ {\"video_prompt\": \"Character's head bows forward slowly, shoulders curl inward, one hand rises to cover face. "
+        "Camera holds tight on face; volumetric light dims, soft shadow spreads across 3D scene. "
+        "Cinematic 3D Pixar animation style.\"}"
     )
 
     user_msg = (
@@ -1024,6 +1026,8 @@ def _generate_story_with_llm(
         if _vp == "gemini" and not os.getenv("GEMINI_API_KEY"):
             continue
         if _vp == "modelslab" and not os.getenv("MODELSLAB_API_KEY"):
+            continue
+        if _vp == "openai" and not os.getenv("OPENAI_API_KEY"):
             continue
         try:
             vps = _generate_video_prompts_for_scenes(scenes, character_anchor, len(scenes), _vp)
