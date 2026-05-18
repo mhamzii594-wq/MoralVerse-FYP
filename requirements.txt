@@ -32,6 +32,7 @@ django-anymail[resend]>=10.0
 
 # Google OAuth
 django-allauth==0.63.6
+PyJWT>=2.8.0
 
 # Background Tasks (Optional)
 # Django-Q for async task processing (optional).
