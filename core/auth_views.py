@@ -73,6 +73,7 @@ def signup_view(request: HttpRequest) -> HttpResponse:
                 messages.error(request, "Verification email could not be sent. Please try again.")
                 return render(request, "auth/signup.html")
 
+            request.session["pending_verification_email"] = email
             messages.success(request,
                 "Account created! Please check your email for the verification code and enter it below.")
             return redirect("verify_otp")
@@ -173,7 +174,8 @@ def verify_otp_view(request: HttpRequest) -> HttpResponse:
             messages.error(request, f"Error verifying OTP: {str(e)}")
             return render(request, "auth/verify_otp.html")
     
-    return render(request, "auth/verify_otp.html")
+    pending_email = request.session.get("pending_verification_email", "")
+    return render(request, "auth/verify_otp.html", {"pending_email": pending_email})
 
 
 @require_http_methods(["GET", "POST"])

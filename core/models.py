@@ -153,8 +153,7 @@ class EmailVerification(models.Model):
     def create_verification(cls, user):
         """Create and return a new verification instance."""
         verification = cls(user=user)
-        verification.generate_otp()
-        verification.save()
+        verification.generate_otp()  # generate_otp() calls self.save()
         return verification
 
 

@@ -73,7 +73,8 @@
                 <i class="bi bi-envelope me-1"></i>Email Address
               </label>
               <input type="email" id="email" name="email" required
-                     class="input-pro" placeholder="Enter your email address">
+                     class="input-pro" placeholder="Enter your email address"
+                     value="{{ pending_email }}">
             </div>
 
             <div class="mb-4 text-start">
@@ -145,13 +146,19 @@
       document.addEventListener("click", e => { if (!e.target.closest(".theme-switcher")) panel.style.display = "none"; });
     })();
 
-    // OTP input: digits only + auto-submit at 6
+    // OTP input: digits only + auto-submit at 6 (only when email is also filled)
     const otpInput = document.getElementById('otp');
+    const emailInput = document.getElementById('email');
     otpInput.addEventListener('input', function () {
       this.value = this.value.replace(/[^0-9]/g, '');
-      if (this.value.length === 6) this.form.submit();
+      if (this.value.length === 6 && emailInput.value.trim()) this.form.submit();
     });
-    otpInput.focus();
+    // Focus OTP if email is pre-filled, otherwise focus email first
+    if (emailInput.value.trim()) {
+      otpInput.focus();
+    } else {
+      emailInput.focus();
+    }
 
     // Resend OTP
     function resendOTP() {
