@@ -524,7 +524,7 @@ _STYLE_TAG = (
 
 # Pass 3 constants — defined at module level for consistency and reuse
 _REQUIRED_ENDING = "Cinematic 3D Pixar animation style."
-_MAX_VP_CHARS = 310
+_MAX_VP_CHARS = 460
 
 _SKIP_WORDS = frozenset({
     "once", "upon", "time", "then", "that", "this", "with", "from", "were",
@@ -834,11 +834,13 @@ def _generate_video_prompts_for_scenes(
 
         f"CHARACTER appearing in every scene: {condensed_char}\n\n"
 
-        "For each scene, write a motion script of exactly 2 sentences (max 300 characters total) that tells "
-        "the Kling image-to-video AI:\n"
-        "  Sentence 1 — CHARACTER MOTION: what the character's body does. "
+        "For each scene, write a motion script of exactly 3 sentences (max 450 characters total) that tells "
+        "the LTX image-to-video AI:\n"
+        "  Sentence 1 — CHARACTER MOTION: what the character's body does in the first half of the clip. "
         "Name specific limbs, direction, and speed. The character is a 3D rendered figure with volume and weight.\n"
-        "  Sentence 2 — CAMERA + ENVIRONMENT: how the camera moves AND what moves in the background. "
+        "  Sentence 2 — CHARACTER CONTINUATION: what the character does in the second half (completing the action or reacting). "
+        "Keep motion flowing naturally — avoid abrupt stops.\n"
+        "  Sentence 3 — CAMERA + ENVIRONMENT: how the camera moves AND what moves in the background. "
         "Use cinematic 3D camera language — depth of field, bokeh, volumetric light rays.\n\n"
 
         "STRICT RULES:\n"
@@ -848,7 +850,7 @@ def _generate_video_prompts_for_scenes(
         "'found a wallet' → character stops and crouches toward ground. "
         "NEVER write generic idle animation (swaying, blinking) when a specific action is narrated.\n"
         "  - MOTION ONLY — never describe colour, composition, or art style (the image already shows those).\n"
-        "  - Be specific: 'steps forward with left foot, arms swinging, head turning right to look' "
+        "  - Be specific: 'steps forward with left foot, arms swinging naturally, then reaches out right hand toward the object' "
         "not just 'walks'.\n"
         "  - Camera vocabulary: slow push in · cinematic pull back · side-scroll · overhead tilt down · "
         "static wide · gentle pan · shallow depth of field rack focus · dynamic tracking shot.\n"
@@ -857,7 +859,7 @@ def _generate_video_prompts_for_scenes(
         "  - For DECISION scenes (scene contains a choice/question): rack focus zoom in on character's hesitating face or hand.\n"
         "  - For EMOTIONAL/STATIC scenes (character feeling, not doing): animate the body posture change — head drooping, shoulders curling, volumetric light dims.\n"
         "  - End every prompt with exactly these 6 words: 'Cinematic 3D Pixar animation style.'\n"
-        "  - Max 300 characters per prompt including the closing 6 words.\n"
+        "  - Max 450 characters per prompt including the closing 6 words.\n"
         "  - Return ONLY valid JSON. No markdown fences. No explanation.\n\n"
 
         "OUTPUT FORMAT:\n"
@@ -926,8 +928,8 @@ def _generate_video_prompts_for_scenes(
                     # Validate two sentences and minimum content length
                     if vp:
                         content_body = vp[:-len(_REQUIRED_ENDING)].rstrip(". ")
-                        if ". " not in content_body:
-                            logger.warning("Pass-3: single-sentence prompt (expected 2): %s…", vp[:80])
+                        if content_body.count(". ") < 2:
+                            logger.warning("Pass-3: fewer than 3 sentences (expected 3): %s…", vp[:80])
                         if len(content_body) < 40:
                             logger.warning("Pass-3: prompt body too short (%d chars before ending tag): %s", len(content_body), vp)
                 result.append(vp if vp else None)
@@ -989,7 +991,7 @@ def _generate_story_with_llm(
         "  - Scene flow: (1) intro/setup, (2) rising action, (3) first challenge + decision, "
         "(4) consequence of decision, (5) climax + second decision, (6) resolution with moral lesson.\n"
         f"  - All scene `text` and decision texts in {language_label}.\n"
-        "  - Each scene `text` must be EXACTLY 10-12 words (1-2 very short sentences). Count strictly — this controls video clip timing.\n"
+        "  - Each scene `text` must be EXACTLY 18-22 words (2-3 sentences). Count strictly — this controls video clip timing.\n"
         "  - Each scene `text` must contain a VISIBLE PHYSICAL ACTION — something that can be shown in an image.\n"
         "    GOOD: 'Ali picked up the wallet from the dusty road.' (physical, visible)\n"
         "    BAD:  'Ali thought about what he should do.' (inner thought — invisible, cannot be illustrated)\n"

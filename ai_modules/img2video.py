@@ -137,7 +137,7 @@ def _ltx_modal(image_path: str, output_path: str, prompt: str) -> str:
         json={
             "image": image_b64,
             "prompt": prompt[:500],
-            "num_frames": 97,   # ~4s at 24fps
+            "num_frames": 241,   # ~10s at 24fps
             "seed": 42,
         },
         timeout=480,  # cold start ~2 min + generation ~1 min

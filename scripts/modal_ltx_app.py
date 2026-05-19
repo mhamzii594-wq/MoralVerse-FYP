@@ -63,7 +63,7 @@ class LTXModel:
         image_b64: str,
         prompt: str = "gentle cinematic motion, smooth camera, vivid colors",
         negative_prompt: str = "worst quality, inconsistent motion, blurry, jittery, distorted",
-        num_frames: int = 97,   # ~4 seconds at 24 fps
+        num_frames: int = 241,   # ~10 seconds at 24 fps
         fps: int = 24,
         height: int = 480,
         width: int = 704,
@@ -122,7 +122,7 @@ def generate_i2v(item: dict) -> dict:
             "negative_prompt",
             "worst quality, inconsistent motion, blurry, jittery, distorted",
         ),
-        num_frames=item.get("num_frames", 97),
+        num_frames=item.get("num_frames", 241),
         fps=item.get("fps", 24),
         seed=item.get("seed", 42),
     )
