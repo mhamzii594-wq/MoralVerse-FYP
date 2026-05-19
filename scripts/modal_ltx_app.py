@@ -80,7 +80,7 @@ class LTXModel:
             prompt=prompt,
             negative_prompt=negative_prompt,
             num_frames=num_frames,
-            fps=fps,
+            frame_rate=fps,
             height=height,
             width=width,
             num_inference_steps=num_inference_steps,
