@@ -53,9 +53,12 @@ with ltx_image.imports():
 class LTXModel:
     @modal.enter()
     def load(self):
+        import os
+        os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
         self.pipe = LTXImageToVideoPipeline.from_pretrained(
             MODEL_ID, torch_dtype=torch.bfloat16
         ).to("cuda")
+        self.pipe.vae.enable_tiling()  # tiles VAE decode to avoid OOM on 241 frames
 
     @modal.method()
     def generate(
@@ -65,8 +68,8 @@ class LTXModel:
         negative_prompt: str = "worst quality, inconsistent motion, blurry, jittery, distorted",
         num_frames: int = 241,   # ~10 seconds at 24 fps
         fps: int = 24,
-        height: int = 480,
-        width: int = 704,
+        height: int = 288,
+        width: int = 512,
         num_inference_steps: int = 40,
         guidance_scale: float = 3.5,
         seed: int = 42,
