@@ -2,9 +2,13 @@
 Image-to-video clip generation for the cinematic pipeline.
 
 Provider priority:
-  1. ModelsLab Kling v2.1 i2v (fast, 1080p, character-consistent animation)
-  2. ModelsLab basic img2video (v6, cheap fallback)
-  3. Stability AI SVD (last-resort fallback)
+  1. LTX-Video 2.3 on Modal.com (open-source, A10G GPU, ~4s clip)
+  2. ModelsLab Kling v2.1 i2v (fast, 1080p, character-consistent animation)
+  3. ModelsLab basic img2video (v6, cheap fallback)
+  4. Stability AI SVD (last-resort fallback)
+
+LTX Modal is used when MODAL_LTX_ENDPOINT is set in the environment.
+Falls back to Kling automatically if Modal is unavailable or errors.
 
 Returns a local .mp4 path on success, raises on failure.
 """
@@ -37,6 +41,10 @@ def _modelslab_key() -> str:
 
 def _stability_key() -> str:
     return os.getenv("STABILITY_API_KEY", "")
+
+
+def _modal_ltx_endpoint() -> str:
+    return os.getenv("MODAL_LTX_ENDPOINT", "").strip()
 
 
 # ---------------------------------------------------------------------------
@@ -79,6 +87,10 @@ def generate_clip(
     # narration finish together with no looping. Keeps API cost per story ~$2.10.
     effective_duration = 5
 
+    # LTX-Video 2.3 on Modal (sole provider when endpoint is configured)
+    if _modal_ltx_endpoint():
+        return _ltx_modal(image_path, output_path, prompt)
+
     ml_key = _modelslab_key()
     if ml_key:
         try:
@@ -103,6 +115,44 @@ def generate_clip(
         logger.error("STABILITY_API_KEY not set — skipping Stability SVD")
 
     raise RuntimeError("All img2video providers failed — check API keys and logs.")
+
+
+# ---------------------------------------------------------------------------
+# LTX-Video 2.3 on Modal.com (primary provider)
+# ---------------------------------------------------------------------------
+
+def _ltx_modal(image_path: str, output_path: str, prompt: str) -> str:
+    """Generate a ~4s clip via LTX-Video 2.3 running on Modal.com A10G GPU."""
+    import base64
+    endpoint = _modal_ltx_endpoint()
+    if not endpoint:
+        raise RuntimeError("MODAL_LTX_ENDPOINT not set")
+
+    with open(image_path, "rb") as f:
+        image_b64 = base64.b64encode(f.read()).decode()
+
+    logger.info("img2video [LTX Modal]: posting to %s", endpoint)
+    resp = requests.post(
+        endpoint,
+        json={
+            "image": image_b64,
+            "prompt": prompt[:500],
+            "num_frames": 97,   # ~4s at 24fps
+            "seed": 42,
+        },
+        timeout=480,  # cold start ~2 min + generation ~1 min
+    )
+    resp.raise_for_status()
+    data = resp.json()
+
+    video_bytes = base64.b64decode(data["video"])
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, "wb") as f:
+        f.write(video_bytes)
+
+    size_mb = len(video_bytes) / 1e6
+    logger.info("LTX Modal clip saved: %s (%.1f MB)", output_path, size_mb)
+    return output_path
 
 
 # ---------------------------------------------------------------------------
