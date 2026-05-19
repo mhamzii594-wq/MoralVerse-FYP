@@ -42,12 +42,13 @@ def _clean_json(content: str) -> str:
     return content.strip()
 
 def _get_provider(override: str | None = None) -> str:
-    if override and override.lower() in {"openai", "gemini", "groq", "modelslab", "stub"}:
+    if override and override.lower() in {"openai", "gemini", "groq", "modelslab", "fireworks", "stub"}:
         return override.lower()
     env_provider = os.getenv("LLM_PROVIDER", "").lower()
-    if env_provider in {"openai", "gemini", "groq", "modelslab"}:
+    if env_provider in {"openai", "gemini", "groq", "modelslab", "fireworks"}:
         return env_provider
-    # No provider explicitly configured — prefer Groq (reliable JSON, free) when key is set
+    if os.getenv("FIREWORKS_API_KEY"):
+        return "fireworks"
     if os.getenv("GROQ_API_KEY"):
         return "groq"
     return "modelslab"
@@ -59,6 +60,27 @@ def _get_provider(override: str | None = None) -> str:
 
 def _call_llm(provider: str, system: str, user: str, temperature: float = 0.95) -> str:
     """Call the given provider and return raw text content."""
+    if provider == "fireworks":
+        from openai import OpenAI as _OAI
+        api_key = os.getenv("FIREWORKS_API_KEY", "").strip()
+        if not api_key:
+            raise RuntimeError("FIREWORKS_API_KEY not set")
+        model_id = os.getenv("FIREWORKS_MODEL", "accounts/fireworks/models/deepseek-v4-pro")
+        client = _OAI(api_key=api_key, base_url="https://api.fireworks.ai/inference/v1")
+        resp = client.chat.completions.create(
+            model=model_id,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            max_tokens=2048,
+            temperature=temperature,
+        )
+        result = (resp.choices[0].message.content or "").strip()
+        if not result:
+            raise RuntimeError("Fireworks AI returned empty output")
+        return result
+
     if provider == "modelslab":
         # ModelsLab v7 LLM API is OpenAI-compatible — use OpenAI SDK with custom base_url
         from openai import OpenAI as _OAI
@@ -1014,13 +1036,15 @@ def _generate_story_with_llm(
 
     # PASS 3 — video motion prompts for the cinematic pipeline.
     # Try providers in reliability order for structured JSON — Groq first.
-    _vp_order = ["groq", "gemini", provider, "modelslab"]
+    _vp_order = ["fireworks", "groq", "gemini", provider, "modelslab"]
     _vp_tried = []
     video_prompts = None
     for _vp in _vp_order:
         if _vp in _vp_tried:
             continue
         _vp_tried.append(_vp)
+        if _vp == "fireworks" and not os.getenv("FIREWORKS_API_KEY"):
+            continue
         if _vp == "groq" and not os.getenv("GROQ_API_KEY"):
             continue
         if _vp == "gemini" and not os.getenv("GEMINI_API_KEY"):
@@ -1061,12 +1085,14 @@ def generate_story(input_data: Dict[str, Any]) -> Dict[str, Any]:
     character_anchor = _build_character_anchor(child_name, child_age, avatar_desc)
 
     # Try primary provider, then fall through all others before going to stub
-    _fallback_order = ["groq", "gemini", "openai", "modelslab"]
+    _fallback_order = ["fireworks", "groq", "gemini", "openai", "modelslab"]
     providers_to_try = [provider] + [p for p in _fallback_order if p != provider]
 
     last_error = None
     for attempt_provider in providers_to_try:
         # Skip providers with no key configured
+        if attempt_provider == "fireworks" and not os.getenv("FIREWORKS_API_KEY"):
+            continue
         if attempt_provider == "openai" and not os.getenv("OPENAI_API_KEY"):
             continue
         if attempt_provider == "gemini" and not os.getenv("GEMINI_API_KEY"):
