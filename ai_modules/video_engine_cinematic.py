@@ -28,6 +28,7 @@ def assemble_cinematic(
     output_path: str,
     background_music: Optional[str] = None,
     lipsync_clip_paths: Optional[List[Optional[str]]] = None,
+    subtitles_srt: Optional[str] = None,
     progress_callback=None,
 ) -> str:
     """
@@ -197,6 +198,15 @@ def assemble_cinematic(
             logger.warning("[cinematic] Background music failed: %s", exc)
 
     _progress(80)
+
+    # --- Burn subtitles if provided ---
+    if subtitles_srt:
+        srt_path = media_root / subtitles_srt
+        try:
+            from ai_modules.video_engine import burn_subtitles
+            final_video = burn_subtitles(final_video, srt_path, 1280)
+        except Exception as exc:
+            logger.warning("[cinematic] subtitle burn failed: %s", exc)
 
     # --- Write output ---
     logger.info("[cinematic] writing output: %s", full_output)

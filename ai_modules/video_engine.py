@@ -85,6 +85,81 @@ def _find_subtitle_font() -> str | None:
     return None
 
 
+def burn_subtitles(video_clip, srt_path: Path, video_width: int):
+    """
+    Composite SRT subtitle clips onto a MoviePy video clip.
+
+    Shared by both the slideshow and cinematic video engines.
+    Returns the composited clip (same object if SRT is empty/missing).
+    """
+    import re
+    from moviepy import CompositeVideoClip
+    from moviepy.video.VideoClip import TextClip
+
+    if not srt_path.exists():
+        logger.warning("burn_subtitles: SRT file not found: %s", srt_path)
+        return video_clip
+
+    subtitle_font = _find_subtitle_font()
+    logger.info("burn_subtitles: font=%s  srt=%s", subtitle_font, srt_path)
+
+    def _ts_to_sec(ts: str) -> float:
+        parts = ts.split(':')
+        return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+
+    def _make_textclip(txt: str):
+        kwargs = dict(
+            text=txt,
+            font_size=24,
+            color='white',
+            stroke_color='black',
+            stroke_width=2,
+            method='caption',
+            size=(video_width - 100, None),
+            text_align='center',
+        )
+        if subtitle_font:
+            kwargs['font'] = subtitle_font
+        return TextClip(**kwargs)
+
+    try:
+        srt_content = srt_path.read_text(encoding='utf-8')
+        srt_content = srt_content.replace('\r\n', '\n').replace('\r', '\n')
+        blocks = re.split(r'\n{2,}', srt_content.strip())
+        subtitle_clips = []
+        for block in blocks:
+            try:
+                lines = block.strip().split('\n')
+                if len(lines) < 3:
+                    continue
+                ts_line = lines[1]
+                if '-->' not in ts_line:
+                    continue
+                start_str, end_str = ts_line.split('-->')
+                start_sec = _ts_to_sec(start_str.strip().replace(',', '.'))
+                end_sec = _ts_to_sec(end_str.strip().replace(',', '.'))
+                end_sec = min(end_sec, video_clip.duration)
+                if end_sec <= start_sec:
+                    continue
+                text = ' '.join(lines[2:]).strip()
+                if not text:
+                    continue
+                tc = _make_textclip(text)
+                tc = tc.with_start(start_sec).with_duration(max(0.1, end_sec - start_sec)).with_position(('center', 'bottom'))
+                subtitle_clips.append(tc)
+            except Exception as sub_err:
+                logger.warning("burn_subtitles: skipping malformed entry: %s", sub_err)
+
+        if subtitle_clips:
+            logger.info("burn_subtitles: compositing %d subtitle clip(s)", len(subtitle_clips))
+            return CompositeVideoClip([video_clip] + subtitle_clips)
+        logger.warning("burn_subtitles: SRT parsed but 0 clips produced")
+    except Exception as exc:
+        logger.warning("burn_subtitles: failed: %s", exc)
+
+    return video_clip
+
+
 def assemble_video(
     scene_images: List[str],
     scene_audio: List[str],
@@ -284,82 +359,7 @@ def assemble_video(
     # Add subtitles if provided
     if subtitles_srt:
         srt_path = media_root / subtitles_srt
-        if srt_path.exists():
-            try:
-                subtitle_font = _find_subtitle_font()
-                logger.info(f"Subtitle font resolved to: {subtitle_font}")
-
-                from moviepy.video.VideoClip import TextClip
-
-                def make_textclip(txt):
-                    """Create a text clip for subtitles using Pillow (MoviePy 2.x)."""
-                    kwargs = dict(
-                        text=txt,
-                        font_size=24,
-                        color='white',
-                        stroke_color='black',
-                        stroke_width=2,
-                        method='caption',
-                        size=(target_width - 100, None),
-                        text_align='center',
-                    )
-                    if subtitle_font:
-                        kwargs['font'] = subtitle_font
-                    return TextClip(**kwargs)
-                
-                # Parse SRT and create subtitle clips
-                subtitle_clips = []
-                with open(srt_path, 'r', encoding='utf-8') as f:
-                    srt_content = f.read()
-
-                # Normalize line endings (Windows \r\n → \n, old Mac \r → \n)
-                srt_content = srt_content.replace('\r\n', '\n').replace('\r', '\n')
-
-                # Block-based SRT parser: split on blank lines (robust, no regex fragility)
-                import re
-                blocks = re.split(r'\n{2,}', srt_content.strip())
-                for block in blocks:
-                    try:
-                        lines = block.strip().split('\n')
-                        if len(lines) < 3:
-                            continue
-                        # lines[0] = index number, lines[1] = timestamps, lines[2+] = text
-                        ts_line = lines[1]
-                        if '-->' not in ts_line:
-                            continue
-                        start_str, end_str = ts_line.split('-->')
-                        start_str = start_str.strip().replace(',', '.')
-                        end_str = end_str.strip().replace(',', '.')
-
-                        def _ts_to_sec(ts):
-                            parts = ts.split(':')
-                            return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
-
-                        start_sec = _ts_to_sec(start_str)
-                        end_sec = _ts_to_sec(end_str)
-                        # Clamp to video duration — a subtitle past the end extends the
-                        # CompositeVideoClip, producing a frozen last frame.
-                        end_sec = min(end_sec, final_video.duration)
-                        if end_sec <= start_sec:
-                            continue
-                        sub_duration = max(0.1, end_sec - start_sec)
-                        text = ' '.join(lines[2:]).strip()
-                        if not text:
-                            continue
-
-                        txt_clip = make_textclip(text)
-                        txt_clip = txt_clip.with_start(start_sec).with_duration(sub_duration).with_position(('center', 'bottom'))
-                        subtitle_clips.append(txt_clip)
-                    except Exception as sub_err:
-                        logger.warning(f"Skipping malformed subtitle entry: {sub_err}")
-
-                if subtitle_clips:
-                    logger.info(f"Compositing {len(subtitle_clips)} subtitle clip(s) onto video")
-                    final_video = CompositeVideoClip([final_video] + subtitle_clips)
-                else:
-                    logger.warning("SRT parsed but produced 0 subtitle clips — check SRT file format")
-            except Exception as e:
-                logger.warning(f"Failed to add subtitles: {e}")
+        final_video = burn_subtitles(final_video, srt_path, target_width)
     
     # Write final video
     try:

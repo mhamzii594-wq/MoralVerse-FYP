@@ -523,7 +523,7 @@ _STYLE_TAG = (
 )
 
 # Pass 3 constants — defined at module level for consistency and reuse
-_REQUIRED_ENDING = "Cinematic 3D Pixar animation style."
+_REQUIRED_ENDING = "Character stays centered, full body in frame."
 _MAX_VP_CHARS = 460
 
 _SKIP_WORDS = frozenset({
@@ -852,14 +852,19 @@ def _generate_video_prompts_for_scenes(
         "  - MOTION ONLY — never describe colour, composition, or art style (the image already shows those).\n"
         "  - Be specific: 'steps forward with left foot, arms swinging naturally, then reaches out right hand toward the object' "
         "not just 'walks'.\n"
+        "  - KEEP CHARACTER IN FRAME (CRITICAL): The character must remain fully visible — full body "
+        "head-to-toe — for the ENTIRE clip. FORBIDDEN camera moves: zoom in on face, rack focus to face, "
+        "close-up, push in tight, macro shot. These cause the character to drift off-frame mid-clip.\n"
+        "  - ALLOWED camera moves: slow push in from wide to medium-full (stopping at full body), "
+        "gentle side pan, cinematic pull back, overhead tilt down, static wide shot.\n"
         "  - Camera vocabulary: slow push in · cinematic pull back · side-scroll · overhead tilt down · "
-        "static wide · gentle pan · shallow depth of field rack focus · dynamic tracking shot.\n"
-        "  - For OPENING scenes: wide establishing shot slowly pushing in, bokeh background.\n"
+        "static wide · gentle pan · dynamic tracking shot.\n"
+        "  - For OPENING scenes: wide establishing shot slowly pushing in to medium-full body, bokeh background.\n"
         "  - For CLOSING scenes: cinematic pull back to reveal the full environment, warm light rays.\n"
-        "  - For DECISION scenes (scene contains a choice/question): rack focus zoom in on character's hesitating face or hand.\n"
+        "  - For DECISION scenes (scene contains a choice/question): static wide shot, camera holds on character's full body with hesitating posture.\n"
         "  - For EMOTIONAL/STATIC scenes (character feeling, not doing): animate the body posture change — head drooping, shoulders curling, volumetric light dims.\n"
-        "  - End every prompt with exactly these 6 words: 'Cinematic 3D Pixar animation style.'\n"
-        "  - Max 450 characters per prompt including the closing 6 words.\n"
+        "  - End every prompt with exactly these 7 words: 'Character stays centered, full body in frame.'\n"
+        "  - Max 450 characters per prompt including the closing 7 words.\n"
         "  - Return ONLY valid JSON. No markdown fences. No explanation.\n\n"
 
         "OUTPUT FORMAT:\n"
@@ -870,27 +875,27 @@ def _generate_video_prompts_for_scenes(
         "[OPENING scene] \"Tooba walked through the farm watching chickens peck at the ground.\"\n"
         "→ {\"video_prompt\": \"Character walks forward, arms swinging naturally, head turning left toward chickens. "
         "Wide establishing shot pushes in slowly; chickens bob and peck, grass sways, bokeh background. "
-        "Cinematic 3D Pixar animation style.\"}\n\n"
+        "Character stays centered, full body in frame.\"}\n\n"
 
         "[MIDDLE scene 3/6] \"She noticed the old rusty well filled with debris and decided to clean it.\"\n"
         "→ {\"video_prompt\": \"Character stops, head snaps toward the well, hands move to hips with weight. "
         "Camera rack-focuses to face; leaves drift past, well water ripples, volumetric dust motes. "
-        "Cinematic 3D Pixar animation style.\"}\n\n"
+        "Character stays centered, full body in frame.\"}\n\n"
 
         "[CLOSING scene] \"Tooba smiled as the clean well sparkled in the afternoon light.\"\n"
         "→ {\"video_prompt\": \"Character turns to camera, face brightening into a warm smile, arms relaxing at sides. "
         "Cinematic pull back reveals full farm; golden light rays sweep across scene, birds take flight. "
-        "Cinematic 3D Pixar animation style.\"}\n\n"
+        "Character stays centered, full body in frame.\"}\n\n"
 
         "[DECISION scene] \"She found a wallet on the street. Should she keep the money or return it?\"\n"
         "→ {\"video_prompt\": \"Character stops walking, crouches slowly, hand reaching toward wallet with hesitation. "
         "Camera rack-focuses to hand and wallet; dust particles drift, shallow depth of field blurs background. "
-        "Cinematic 3D Pixar animation style.\"}\n\n"
+        "Character stays centered, full body in frame.\"}\n\n"
 
         "[EMOTIONAL scene — no physical action] \"Omar felt deeply ashamed and could not look up.\"\n"
         "→ {\"video_prompt\": \"Character's head bows forward slowly, shoulders curl inward, one hand rises to cover face. "
         "Camera holds tight on face; volumetric light dims, soft shadow spreads across 3D scene. "
-        "Cinematic 3D Pixar animation style.\"}"
+        "Character stays centered, full body in frame.\"}"
     )
 
     user_msg = (

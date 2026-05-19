@@ -414,7 +414,26 @@ def generate_story_video_cinematic(user_input_id: int) -> str:
             logger.warning('[cinematic] mutagen not installed — using default 5s clip duration')
             scene_durations = [None] * len(scene_audio)
 
-        # Step 1: Generate AI video clips for each scene (0–50%)
+        # Step 1a: Generate subtitles (same as slideshow pipeline)
+        from ai_modules.subtitle_engine import generate_subtitles
+        scene_texts_for_subs = [
+            (story_scenes_data.get(s.scene_id, {}).get('text') or '')
+            for s in scenes_with_images
+        ]
+        try:
+            subtitle_path = generate_subtitles(
+                scene_texts_for_subs,
+                source_language=story_request.preferred_language,
+                durations=scene_durations if scene_durations else None,
+            )
+            story_request.subtitle_path = subtitle_path
+            story_request.save()
+            logger.info('[cinematic] subtitles generated: %s', subtitle_path)
+        except Exception as _sub_exc:
+            subtitle_path = None
+            logger.warning('[cinematic] subtitle generation failed: %s', _sub_exc)
+
+        # Step 1b: Generate AI video clips for each scene (0–50%)
         clip_dir = f"clips/story_{user_input_id}"
 
         def _clip_progress(pct: int):
@@ -493,6 +512,7 @@ def generate_story_video_cinematic(user_input_id: int) -> str:
             output_path=video_path,
             background_music=background_music,
             lipsync_clip_paths=lipsync_paths,
+            subtitles_srt=subtitle_path,
             progress_callback=_assemble_progress,
         )
 
