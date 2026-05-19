@@ -183,17 +183,19 @@ def create_srt_file(
     with open(output_path, "w", encoding="utf-8") as f:
         for i, (english_text, urdu_text) in enumerate(scenes):
             duration = durations[i] if durations and i < len(durations) else estimate_duration(english_text, language=language)
-            
+
             start_time = format_timestamp(current_time)
             end_time = format_timestamp(current_time + duration)
-            
-            # Write subtitle entry
+
+            # Show only one language per block — mixing both causes double-text rendering.
+            # For Urdu stories show Urdu; for English stories show English.
+            subtitle_text = urdu_text if language == "ur" else english_text
+
             f.write(f"{subtitle_index}\n")
             f.write(f"{start_time} --> {end_time}\n")
-            f.write(f"{urdu_text}\n")
-            f.write(f"{english_text}\n")
+            f.write(f"{subtitle_text}\n")
             f.write("\n")
-            
+
             current_time += duration
             subtitle_index += 1
 
