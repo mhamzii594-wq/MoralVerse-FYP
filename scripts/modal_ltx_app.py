@@ -24,8 +24,8 @@ ltx_image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("ffmpeg")
     .pip_install(
-        "torch==2.4.0",
-        "torchvision",
+        "torch==2.6.0",
+        "torchvision==0.21.0",
         "diffusers>=0.33.0",
         "transformers>=4.44.0",
         "accelerate>=0.33.0",
