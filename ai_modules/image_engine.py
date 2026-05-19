@@ -1305,20 +1305,9 @@ def generate_scene_image(
                 # Upload avatar once; all tiers that need a URL reuse the cached value.
                 avatar_url = _upload_image_for_api(avatar_bytes, cache_key=avatar_path)
 
-                # ── Tier 1: ToonYou + IP-Adapter Plus Face ───────────────────
-                # SD 1.5 cartoon model with face-identity injection from the avatar.
-                # Best chibi aesthetic + strongest face consistency.
-                try:
-                    logger.info("Scene ToonYou + IP-Adapter Face: %s", avatar_path)
-                    ty_opts: Dict[str, Any] = {"ip_adapter_image_url": avatar_url}
-                    if seed is not None:
-                        ty_opts["seed"] = seed
-                    return _generate_modelslab_toonyou(prompt, ty_opts)
-                except Exception as ty_err:
-                    logger.warning("ToonYou failed, falling back to FLUX Kontext img2img: %s", ty_err)
-
-                # ── Tier 2: FLUX Kontext Dev img2img ────────────────────────
-                # avatar_path used as cache key — upload happens once, all scenes reuse URL.
+                # ── Tier 1: FLUX Kontext Dev img2img ────────────────────────
+                # Uses avatar as structural reference + full text prompt for scene.
+                # 12B param model that follows _STYLE_TAG and character anchor properly.
                 logger.info("Scene img2img with FLUX Kontext Dev (base64 avatar): %s", avatar_path)
                 i2i_opts: Dict[str, Any] = {
                     "image_data": avatar_b64,
@@ -1326,7 +1315,18 @@ def generate_scene_image(
                 }
                 if seed is not None:
                     i2i_opts["seed"] = seed
-                return _generate_modelslab(prompt, i2i_opts)
+                try:
+                    return _generate_modelslab(prompt, i2i_opts)
+                except Exception as kontext_err:
+                    logger.warning("FLUX Kontext failed, falling back to ToonYou: %s", kontext_err)
+
+                # ── Tier 2: ToonYou + IP-Adapter Plus Face ───────────────────
+                # SD 1.5 cartoon fallback with face-identity injection from the avatar.
+                logger.info("Scene ToonYou + IP-Adapter Face (fallback): %s", avatar_path)
+                ty_opts: Dict[str, Any] = {"ip_adapter_image_url": avatar_url}
+                if seed is not None:
+                    ty_opts["seed"] = seed
+                return _generate_modelslab_toonyou(prompt, ty_opts)
         except Exception as e:
             logger.warning("ModelsLab scene generation failed, falling back to text2img: %s", e)
 
