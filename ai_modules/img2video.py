@@ -144,8 +144,10 @@ def _wan_modal(image_path: str, output_path: str, prompt: str, duration: float =
     with open(image_path, "rb") as f:
         image_b64 = base64.b64encode(f.read()).decode()
 
-    # Wan 2.1 runs at 16fps. Cap at 121 frames (~7.5s) — model limit.
-    num_frames = min(121, max(17, int(duration * 16)))
+    # Wan 2.1 runs at 16fps and requires (num_frames - 1) % 4 == 0. Clip length follows
+    # the scene narration, clamped to 17..121 frames (~1-7.5s, model limit).
+    raw = max(17, min(121, int(round(duration * 16))))
+    num_frames = round((raw - 1) / 4) * 4 + 1
 
     logger.info("img2video [Wan 2.1 Modal]: %d frames (%.1fs) posting to %s", num_frames, duration, endpoint)
     resp = requests.post(
@@ -153,12 +155,15 @@ def _wan_modal(image_path: str, output_path: str, prompt: str, duration: float =
         json={
             "image": image_b64,
             "prompt": prompt[:500],
-            "negative_prompt": "worst quality, inconsistent motion, blurry, jittery, distorted, static, no movement",
+            "negative_prompt": (
+                "flat 2D, anime, cel-shaded, hand-drawn, sketch, "
+                "worst quality, inconsistent motion, blurry, jittery, distorted, static, no movement"
+            ),
             "num_frames": num_frames,
             "fps": 16,
             "seed": random.randint(0, 2**32 - 1),  # unique per scene
         },
-        timeout=600,  # cold start ~2 min + generation ~2 min
+        timeout=900,  # cold start ~2 min + 25-step generation ~7 min; must exceed Modal's runtime
     )
     resp.raise_for_status()
     data = resp.json()

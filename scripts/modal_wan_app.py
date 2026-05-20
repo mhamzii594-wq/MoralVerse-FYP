@@ -94,7 +94,7 @@ class WanModel:
         fps: int = 16,
         height: int = 480,
         width: int = 832,        # Wan 2.1 native aspect ratio 832x480
-        num_inference_steps: int = 30,
+        num_inference_steps: int = 25,  # quality saturates ~25; 30 only adds runtime
         guidance_scale: float = 5.0,
         seed: int = -1,          # -1 = random seed per clip
     ) -> bytes:
@@ -131,7 +131,11 @@ class WanModel:
                 output_params=["-crf", "20", "-pix_fmt", "yuv420p"],
             )
             for frame in frames:
-                writer.append_data(np.array(frame))
+                arr = np.array(frame)
+                if arr.dtype != np.uint8:
+                    # diffusers returns float32 frames in [0, 1] — scale to uint8 explicitly
+                    arr = (arr * 255.0).clip(0, 255).astype(np.uint8)
+                writer.append_data(arr)
             writer.close()
             with open(tmp_path, "rb") as f:
                 return f.read()
