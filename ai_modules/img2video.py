@@ -209,8 +209,8 @@ def _ltx_modal(image_path: str, output_path: str, prompt: str, duration: float =
             "prompt": prompt[:500],
             "num_frames": num_frames,
             "fps": fps,
-            "height": 768,
-            "width": 1024,
+            "height": 480,
+            "width": 832,
             "num_inference_steps": 40,
             "guidance_scale": 3.5,
             "negative_prompt": (

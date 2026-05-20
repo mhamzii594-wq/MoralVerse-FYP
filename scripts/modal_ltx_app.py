@@ -72,8 +72,8 @@ class LTXModel:
         ),
         num_frames: int = 121,   # ~5 seconds at 24 fps
         fps: int = 24,
-        height: int = 768,       # match 1024x768 source images (crisp, no distortion)
-        width: int = 1024,
+        height: int = 480,       # 16:9 to match the 16:9 scene images (no distortion)
+        width: int = 832,
         num_inference_steps: int = 40,
         guidance_scale: float = 3.5,
         seed: int = 42,
@@ -82,6 +82,19 @@ class LTXModel:
         import tempfile
         image_bytes = base64.b64decode(image_b64)
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        # Center-crop to the target aspect ratio BEFORE the pipeline resizes, so the frame
+        # is never stretched (e.g. a 4:3 source into 16:9 would otherwise squash faces).
+        target_ar = width / height
+        sw, sh = image.size
+        src_ar = sw / sh
+        if abs(src_ar - target_ar) > 0.01:
+            if src_ar > target_ar:        # too wide — trim sides
+                nw = int(round(sh * target_ar)); left = (sw - nw) // 2
+                image = image.crop((left, 0, left + nw, sh))
+            else:                          # too tall — trim top/bottom
+                nh = int(round(sw / target_ar)); top = (sh - nh) // 2
+                image = image.crop((0, top, sw, top + nh))
+        image = image.resize((width, height), Image.LANCZOS)
         generator = torch.Generator(device="cuda").manual_seed(seed)
 
         output = self.pipe(
