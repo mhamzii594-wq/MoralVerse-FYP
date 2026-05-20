@@ -94,7 +94,7 @@ class WanModel:
         fps: int = 16,
         height: int = 480,
         width: int = 832,        # Wan 2.1 native aspect ratio 832x480
-        num_inference_steps: int = 25,  # quality saturates ~25; 30 only adds runtime
+        num_inference_steps: int = 20,  # quality saturates ~20-25; fewer steps = faster
         guidance_scale: float = 5.0,
         seed: int = -1,          # -1 = random seed per clip
     ) -> bytes:

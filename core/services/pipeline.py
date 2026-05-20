@@ -478,7 +478,7 @@ def generate_story_video_cinematic(user_input_id: int) -> str:
             scene_prompts=scene_prompts,
             scene_durations=scene_durations if scene_durations else None,
             progress_callback=_clip_progress,
-            max_workers=2,
+            max_workers=6,
         )
 
         # Cache clip paths on scenes for re-use

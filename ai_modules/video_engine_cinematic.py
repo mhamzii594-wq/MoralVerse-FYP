@@ -242,10 +242,10 @@ def generate_scene_clips_parallel(
     scene_prompts: Optional[List[str]] = None,
     scene_durations: Optional[List[float]] = None,
     progress_callback=None,
-    max_workers: int = 2,
+    max_workers: int = 6,
 ) -> List[Optional[str]]:
     """
-    Generate AI video clips for all scenes in parallel (max 2 at a time).
+    Generate AI video clips for all scenes in parallel (max 6 at a time).
 
     Args:
         scene_prompts: Optional per-scene text prompts for guided animation.
