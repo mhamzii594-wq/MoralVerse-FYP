@@ -219,7 +219,13 @@ def generate_story_video(user_input_id: int) -> str:
 
             def _gen_aud(task):
                 idx, sd, sc, text = task
-                path = generate_audio(text, voice="child_friendly", language=_lang, provider_override=_tts)
+                path = generate_audio(
+                    text,
+                    voice="child_friendly",
+                    language=_lang,
+                    provider_override=_tts,
+                    tts_prompt=sd.get("tts_prompt"),
+                )
                 StoryScene.objects.filter(pk=sc.pk).update(audio_path=path)
                 return idx, path, sd.get('id')
 

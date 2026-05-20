@@ -269,7 +269,9 @@ def _generate_image_prompts_for_scenes(
         "children's picture books.\n\n"
 
         "YOUR ONLY JOB: for each scene sentence, extract the 5 pure visual fields listed below.\n"
-        "You do NOT write the character description — that is added by code.\n"
+        f"The protagonist's EXACT character description is: \"{character_anchor}\"\n"
+        "CRITICAL: The 'action' field MUST start with this EXACT character description (copy verbatim), "
+        "then describe the physical movement. This makes the character appear identically in every scene.\n"
         "You do NOT write the art style tag — that is added by code.\n"
         "You write ONLY what changes between scenes: action, props, setting, others, lighting.\n\n"
 
@@ -278,11 +280,13 @@ def _generate_image_prompts_for_scenes(
         "══════════════════════════════════════════════\n\n"
 
         "FIELD 1 — action  (REQUIRED, never empty)\n"
-        "  The main character's precise physical movement right now.\n"
+        f"  START with this EXACT text: \"{character_anchor}\"\n"
+        "  Then add a comma and describe the character's precise physical movement right now.\n"
         "  Must contain: a concrete movement verb + the body part performing it.\n"
-        "  ✓ Good: 'crouching on the ground, both hands cupped around a sparrow'\n"
-        "  ✓ Good: 'extending both arms forward, holding a trophy toward a teacher'\n"
-        "  ✓ Good: 'climbing a tree trunk, left foot on a branch, right hand clutching bark'\n"
+        f"  ✓ Good: '{character_anchor}, crouching on the ground, both hands cupped around a sparrow'\n"
+        f"  ✓ Good: '{character_anchor}, extending both arms forward, holding a trophy toward a teacher'\n"
+        f"  ✓ Good: '{character_anchor}, climbing a tree trunk, left foot on a branch, right hand clutching bark'\n"
+        "  ✗ Bad: writing just the movement without the character description prefix\n"
         "  ✗ Bad:  'feeling scared'  'thinking about'  'realizing the truth'  'learning a lesson'\n"
         "  EMOTION → BODY LANGUAGE — never write emotion words, translate them:\n"
         "    scared/terrified → wide eyes, one foot stepped back, both hands raised\n"
@@ -560,8 +564,8 @@ def _assemble_scene_prompt(anchor: str, fields: dict, scene_text: str = "") -> s
             logger.warning("_assemble_scene_prompt: 'action' field empty and no scene_text — anchor will be first token (invariant #3 broken)")
     parts = []
     if action:
-        parts.append(action)   # ACTION FIRST — most important visual cue for FLUX
-    parts.append(anchor)       # then character identity
+        parts.append(action)   # ACTION FIRST — includes character description (from Pass 2 instruction)
+    # character anchor is now embedded inside the action field by the Pass 2 LLM
     for key in ("props", "setting", "others", "lighting"):
         val = (fields.get(key) or "").strip().rstrip(",.")
         if val:
@@ -987,8 +991,9 @@ def _generate_story_with_llm(
         "You are a children's interactive storytelling engine. "
         "Return ONLY valid JSON, no extra text.\n"
         "JSON structure:\n"
-        "  {\"title\": string, \"avatar_used\": bool, \"scenes\": [\n"
-        "    {\"id\": int, \"text\": string, \"image_prompt\": \"\", \"decision\": null or {\"A\": string, \"B\": string}}\n"
+        "  {\"title\": string, \"avatar_used\": bool, \"character_visual\": string, \"scenes\": [\n"
+        "    {\"id\": int, \"text\": string, \"image_prompt\": \"\", \"decision\": null or {\"A\": string, \"B\": string},\n"
+        "     \"tts_prompt\": [{\"role\": string, \"text\": string}]}\n"
         "  ]}\n"
         "Rules:\n"
         "  - Exactly 6 scenes.\n"
@@ -1010,7 +1015,18 @@ def _generate_story_with_llm(
         f"  - Make the story age-appropriate for a {child_age}-year-old and rich in detail.\n"
         f"  - Use {child_name}'s name naturally in every scene's first sentence — they are always the subject.\n"
         "  - Scene 1 must show the character actively doing something specific from the very first sentence — never open with 'Once upon a time there was...' alone.\n"
-        "  - Every scene must be in a DIFFERENT location or show a clear visual change from the previous scene — no two consecutive scenes in identical settings."
+        "  - Every scene must be in a DIFFERENT location or show a clear visual change from the previous scene — no two consecutive scenes in identical settings.\n"
+        f"  - character_visual: A single string (≤80 words) describing the protagonist's FULL appearance for image generation. "
+        f"Include: age, hair colour/style, eye colour, skin tone, exact clothing with colours and any accessories. "
+        f"Be concrete and culturally specific to {child_name}'s likely background. "
+        f"Example: \"8-year-old Pakistani girl, warm olive skin, long dark hair in two braids, big round brown eyes, bright pink shalwar kameez with gold embroidery, small red earrings\". "
+        f"This string is injected verbatim into every image prompt — NEVER change it between scenes.\n"
+        "  - tts_prompt: For EACH scene, a list of spoken lines for text-to-speech. Rules:\n"
+        "    ALWAYS start with narrator line that speaks the scene text. Add 1-2 character dialogue lines if characters speak.\n"
+        "    Each text MUST be under 15 words. No punctuation in text field — plain spoken words only.\n"
+        "    Available roles: narrator, boy_hero, girl, old_man, villain, wise_woman, young_child, comic_relief, tough_guy, gentle_soul\n"
+        "    Example: [{\"role\": \"narrator\", \"text\": \"Ali found a lost wallet on the dusty road\"}, "
+        "{\"role\": \"boy_hero\", \"text\": \"I must find who this belongs to\"}]"
     )
 
     _variation_settings = [
@@ -1032,6 +1048,14 @@ def _generate_story_with_llm(
     content_p1 = _call_llm_with_retry(provider, system_p1, user_p1)
     data = _json.loads(_clean_json(content_p1))
     data["avatar_used"] = bool(input_data.get("avatar_path"))
+
+    # Use LLM-generated character_visual as anchor when no avatar is provided.
+    # Avatar stories keep the vision-analysis anchor (more accurate than LLM imagination).
+    character_visual = data.pop("character_visual", None)
+    if character_visual and not input_data.get("avatar_path"):
+        character_anchor = f"{character_visual.rstrip('. ')}, chibi proportions, large anime eyes"
+        logger.info("Character anchor updated from LLM character_visual (%d chars)", len(character_anchor))
+
     data["character_anchor"] = character_anchor
 
     # PASS 2 — image prompts derived directly from each scene text

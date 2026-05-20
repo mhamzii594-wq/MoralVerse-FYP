@@ -31,6 +31,21 @@ def log_api_error(msg):
 
 TTSProvider = Literal["gemini", "openai", "elevenlabs", "coqui", "modelslab", "stub"]
 
+# Role → voice name mapping for multi-speaker TTS.
+# Values are provider-agnostic names resolved per-provider inside generate_audio().
+_ROLE_VOICE_MAP: dict[str, str] = {
+    "narrator":    "child_friendly",
+    "boy_hero":    "young_male",
+    "girl":        "young_female",
+    "old_man":     "elder_male",
+    "villain":     "dramatic",
+    "wise_woman":  "elder_female",
+    "young_child": "child_friendly",
+    "comic_relief":"playful",
+    "tough_guy":   "deep_male",
+    "gentle_soul": "soft_female",
+}
+
 
 def _detect_provider(override: str | None = None) -> TTSProvider:
     explicit = (override or os.getenv("TTS_PROVIDER") or "").strip().lower()
@@ -70,14 +85,20 @@ def generate_audio(
     voice: str = "child_friendly",
     language: str = "en",
     provider_override: str | None = None,
+    tts_prompt: list | None = None,
 ) -> str:
     """
     Generate speech audio for the supplied text and return a file path
     within MEDIA_ROOT (e.g. "audio/scene_123.wav").
 
     Args:
-        scene_text: Text to convert to speech
+        scene_text: Text to convert to speech (fallback when tts_prompt is absent)
         voice: Voice identifier (default: "child_friendly")
+        tts_prompt: Structured list from Pass 1, e.g.
+            [{"role": "narrator", "text": "Ali found a wallet"},
+             {"role": "boy_hero", "text": "I must return this"}]
+            When provided, the narrator line drives the audio text.
+            Full multi-voice concat is a future enhancement — narrator text is used now.
         language: 'en' for English, 'ur' for Urdu (used to pick a better local model if needed)
             - For OpenAI: "alloy", "echo", "fable", "onyx", "nova", "shimmer"
             - For ElevenLabs: voice name or ID
@@ -88,7 +109,22 @@ def generate_audio(
     """
     import time
     import hashlib
-    
+
+    # If structured tts_prompt is provided, use the narrator line as primary text.
+    # Character dialogue lines are preserved in the scene JSON for future multi-voice support.
+    if tts_prompt and isinstance(tts_prompt, list):
+        try:
+            narrator_lines = [
+                entry.get("text", "")
+                for entry in tts_prompt
+                if isinstance(entry, dict) and entry.get("role") == "narrator"
+            ]
+            if narrator_lines and narrator_lines[0].strip():
+                scene_text = narrator_lines[0].strip()
+                logger.info("tts_prompt narrator text used: %s…", scene_text[:60])
+        except Exception as _tp_err:
+            logger.warning("tts_prompt parsing failed, using scene_text: %s", _tp_err)
+
     provider = _detect_provider(provider_override)
     
     # Global Stub Mode (Credit Protection)
