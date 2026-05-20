@@ -48,7 +48,7 @@ _VERB_MOTION = {
     'read':     'eyes moving steadily across a page, finger tracing along the lines of text',
     'write':    'hand moving in careful controlled strokes, head bowed in concentration',
     'plant':    'kneeling with knees on the earth, hands pressing seeds gently down into the soil',
-    'water':    'tilting a container, a graceful arc of water streaming down onto the ground',
+    'watering': 'tilting a container, a graceful arc of water streaming down onto the ground',
     'harvest':  'hands gripping produce firmly and pulling it free from the stem with a smooth twist',
     'cook':     'hand stirring a pot in slow circles, leaning over with a focused attentive expression',
     'draw':     'hand moving in light deliberate strokes across a surface, eyes flicking up for reference',

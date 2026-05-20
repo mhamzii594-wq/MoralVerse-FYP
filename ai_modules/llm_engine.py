@@ -831,7 +831,13 @@ def _generate_video_prompts_for_scenes(
                 else "CLOSING scene" if i == total_scenes
                 else f"MIDDLE scene {i}/{total_scenes}"
             )
-            scene_lines.append(f"[{position_label}] Scene {s.get('id', i)}: \"{txt}\"")
+            # Include the previous scene's text so the LLM can write a natural motion handoff
+            prev_context = ""
+            if i > 1 and isinstance(scenes[i - 2], dict):
+                prev_txt = (scenes[i - 2].get("text") or "").strip()
+                if prev_txt:
+                    prev_context = f" [follows scene: \"{prev_txt[:70]}\"]"
+            scene_lines.append(f"[{position_label}]{prev_context} Scene {s.get('id', i)}: \"{txt}\"")
 
     system = (
         "You are an AI video director writing Kling i2v motion scripts for a children's Pixar-style 3D animated story.\n\n"
@@ -867,6 +873,15 @@ def _generate_video_prompts_for_scenes(
         "  - For CLOSING scenes: cinematic pull back to reveal the full environment, warm light rays.\n"
         "  - For DECISION scenes (scene contains a choice/question): static wide shot, camera holds on character's full body with hesitating posture.\n"
         "  - For EMOTIONAL/STATIC scenes (character feeling, not doing): animate the body posture change — head drooping, shoulders curling, volumetric light dims.\n"
+        "INTER-SCENE CAMERA ARC (mandatory for smooth video flow across all 6 clips):\n"
+        "  Scene 1: Wide establishing shot, slow push-in to medium-full.\n"
+        "  Scene 2: Medium-full, gentle pan or tilt following character movement.\n"
+        "  Scene 3: Same height, tracking alongside the character.\n"
+        "  Scene 4: Hold on character, slight environmental drift or overhead tilt.\n"
+        "  Scene 5: Dynamic follow shot during action or decision moment.\n"
+        "  Scene 6: Cinematic pull back from medium to wide, revealing full environment.\n"
+        "  NEVER repeat the same camera direction in two consecutive scenes — vary between push-in, pan, tilt, track, hold, and pull-back.\n"
+        "MOTION HANDOFF: If scene N shows the character arriving somewhere or finishing an action, scene N+1 should begin with them at the new location starting the next action — not repeating the same movement.\n"
         "  - End every prompt with exactly these 7 words: 'Character stays centered, full body in frame.'\n"
         "  - Max 450 characters per prompt including the closing 7 words.\n"
         "  - Return ONLY valid JSON. No markdown fences. No explanation.\n\n"
@@ -903,6 +918,11 @@ def _generate_video_prompts_for_scenes(
     )
 
     user_msg = (
+        "These scenes form ONE continuous story played in sequence with 0.8s crossfades between clips. "
+        "Write motion scripts that flow together as a single cinematic video:\n"
+        "- Character's motion at the END of scene N should lead naturally into the START of scene N+1.\n"
+        "- Use the camera arc prescribed in the rules — each clip must use a DIFFERENT camera direction.\n"
+        "- The 6 clips must feel like ONE continuous journey, not 6 unrelated shots.\n\n"
         "Write a video motion script for each of these scenes:\n"
         + "\n".join(scene_lines)
     )
