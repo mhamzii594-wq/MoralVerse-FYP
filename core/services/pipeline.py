@@ -148,6 +148,7 @@ def generate_story_video(user_input_id: int) -> str:
                 image_tasks.append((i, scene_data, scene, image_prompt))
 
         if image_tasks:
+            import base64 as _b64
             _ip = story_request.image_provider
             _av = avatar_path
             # Fixed seed shared by all 6 scene calls — ensures consistent character
@@ -155,11 +156,35 @@ def generate_story_video(user_input_id: int) -> str:
             _seed = random.randint(10000, 999999)
             _anchor = character_anchor
 
+            # Identity lock when there is NO avatar: generate scene 1 first, then feed it
+            # as a FLUX Kontext reference into scenes 2..N so the protagonist looks the
+            # same person throughout (a shared seed alone does not lock the face).
+            _ref_b64 = None
+            if not _av:
+                _first = [t for t in image_tasks if t[0] == 0]
+                if _first:
+                    idx0, sd0, sc0, prompt0 = _first[0]
+                    path0 = generate_scene_image(
+                        prompt0, _av, image_provider=_ip, seed=_seed, character_anchor=_anchor,
+                    )
+                    StoryScene.objects.filter(pk=sc0.pk).update(image_path=path0)
+                    scene_images[idx0] = path0
+                    image_tasks = [t for t in image_tasks if t[0] != 0]
+                    logger.info("Generated scene-1 reference image for identity lock: %s", path0)
+                _ref_path = scene_images[0] if scene_images else None
+                if _ref_path:
+                    try:
+                        with open(Path(settings.MEDIA_ROOT) / _ref_path, "rb") as _rf:
+                            _ref_b64 = _b64.b64encode(_rf.read()).decode()
+                    except Exception as _re:
+                        logger.warning("Could not load scene-1 reference image: %s", _re)
+
             def _gen_img(task):
                 idx, sd, sc, prompt = task
                 path = generate_scene_image(
                     prompt, _av, image_provider=_ip,
                     seed=_seed, character_anchor=_anchor,
+                    reference_image_b64=(_ref_b64 if idx != 0 else None),
                 )
                 # Save immediately so a preview-page refresh sees this scene as done.
                 StoryScene.objects.filter(pk=sc.pk).update(image_path=path)

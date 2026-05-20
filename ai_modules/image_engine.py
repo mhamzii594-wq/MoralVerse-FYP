@@ -1276,6 +1276,9 @@ def generate_scene_image(
     scene_text: str | None = None,
     seed: int | None = None,
     character_anchor: str | None = None,
+    width: int = 1280,
+    height: int = 720,
+    reference_image_b64: str | None = None,
 ) -> str:
     """
     Generate a scene image from a text prompt.
@@ -1316,6 +1319,8 @@ def generate_scene_image(
                 i2i_opts: Dict[str, Any] = {
                     "image_data": avatar_b64,
                     "avatar_cache_key": avatar_path,
+                    "width": width,
+                    "height": height,
                 }
                 if seed is not None:
                     i2i_opts["seed"] = seed
@@ -1334,7 +1339,25 @@ def generate_scene_image(
         except Exception as e:
             logger.warning("ModelsLab scene generation failed, falling back to text2img: %s", e)
 
-    options = {}
+    # No avatar, but a reference image (e.g. scene 1) is provided — use FLUX Kontext
+    # img2img so scenes 2..N keep the SAME character identity as scene 1.
+    if not avatar_path and reference_image_b64 and api_key:
+        try:
+            logger.info("Scene img2img with FLUX Kontext using scene-1 reference (identity lock)")
+            ref_opts: Dict[str, Any] = {
+                "image_data": reference_image_b64,
+                "avatar_cache_key": f"ref_{seed}",
+                "width": width,
+                "height": height,
+                "strength": 0.72,  # higher = follow the new scene prompt more, keep identity
+            }
+            if seed is not None:
+                ref_opts["seed"] = seed
+            return _generate_modelslab(prompt, ref_opts)
+        except Exception as ref_err:
+            logger.warning("Reference-chained Kontext failed, falling back to text2img: %s", ref_err)
+
+    options: Dict[str, Any] = {"width": width, "height": height}
     provider = _provider(image_provider)
     if provider != "stub":
         options["image_provider"] = provider

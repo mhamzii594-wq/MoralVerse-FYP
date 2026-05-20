@@ -104,6 +104,18 @@ class WanModel:
 
         image_bytes = base64.b64decode(image_b64)
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        # Center-crop to the target aspect ratio BEFORE resizing so the frame is never
+        # stretched (e.g. a 4:3 source into 16:9 would otherwise squash faces ~30%).
+        target_ar = width / height
+        sw, sh = image.size
+        src_ar = sw / sh
+        if abs(src_ar - target_ar) > 0.01:
+            if src_ar > target_ar:        # too wide — trim sides
+                nw = int(round(sh * target_ar)); left = (sw - nw) // 2
+                image = image.crop((left, 0, left + nw, sh))
+            else:                          # too tall — trim top/bottom
+                nh = int(round(sw / target_ar)); top = (sh - nh) // 2
+                image = image.crop((0, top, sw, top + nh))
         image = image.resize((width, height), Image.LANCZOS)
 
         actual_seed = seed if seed >= 0 else random.randint(0, 2**32 - 1)

@@ -144,10 +144,13 @@ def _wan_modal(image_path: str, output_path: str, prompt: str, duration: float =
     with open(image_path, "rb") as f:
         image_b64 = base64.b64encode(f.read()).decode()
 
-    # Wan 2.1 runs at 16fps and requires (num_frames - 1) % 4 == 0. Clip length follows
-    # the scene narration, clamped to 17..121 frames (~1-7.5s, model limit).
-    raw = max(17, min(121, int(round(duration * 16))))
-    num_frames = round((raw - 1) / 4) * 4 + 1
+    # Wan 2.1 runs at 16fps and requires (num_frames - 1) % 4 == 0. Round the clip length
+    # UP to the next valid frame count so the video always covers the narration audio
+    # (never ends mid-sentence). Clamped to 17..121 frames (~1-7.5s, model limit).
+    import math
+    raw = max(17, min(121, int(math.ceil(duration * 16))))
+    num_frames = math.ceil((raw - 1) / 4) * 4 + 1
+    num_frames = min(121, num_frames)
 
     logger.info("img2video [Wan 2.1 Modal]: %d frames (%.1fs) posting to %s", num_frames, duration, endpoint)
     resp = requests.post(
