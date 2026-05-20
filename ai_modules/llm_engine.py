@@ -154,7 +154,19 @@ def _call_llm_with_retry(
 # Character anchor — locked description injected into EVERY image prompt
 # ---------------------------------------------------------------------------
 
-def _build_character_anchor(child_name: str, child_age: int, avatar_desc: str) -> str:
+_GIRL_NAMES = {
+    "fatima", "fatimah", "aisha", "ayesha", "zara", "sara", "maryam", "amina", "layla", "hana",
+    "sofia", "emma", "olivia", "lily", "ella", "ava", "mia", "aria",
+    "noor", "hira", "sana", "aliya", "rania", "dua", "zainab", "khadija",
+    "asma", "ruqayyah", "mahnoor", "iman", "saba",
+    "tooba", "tuba", "hafsa", "eshal", "areeba", "laiba", "anaya", "mahira",
+    "nadia", "maria", "lena", "nina", "ana", "anna", "luna", "maya",
+    "lila", "leila", "yasmin", "jasmine", "rose", "ruby", "grace",
+    "claire", "chloe", "sophie", "isabel", "isabella", "natasha",
+}
+
+
+def _build_character_anchor(child_name: str, child_age: int, avatar_desc: str, gender_override: str = "") -> str:
     """
     Build a locked character description injected VERBATIM into every FLUX scene prompt.
 
@@ -179,20 +191,15 @@ def _build_character_anchor(child_name: str, child_age: int, avatar_desc: str) -
     _pixar3d = "Pixar-style rounded face, large expressive eyes, soft 3D volume, smooth CGI proportions"
 
     if is_fallback:
-        _GIRL_NAMES = {
-            "fatima", "aisha", "zara", "sara", "maryam", "amina", "layla", "hana",
-            "sofia", "emma", "olivia", "lily", "ella", "ava", "mia", "aria",
-            "noor", "hira", "sana", "aliya", "rania", "dua", "zainab", "khadija",
-            "asma", "ruqayyah", "mahnoor", "iman", "saba",
-            "nadia", "maria", "lena", "nina", "ana", "anna", "luna", "maya",
-            "lila", "leila", "yasmin", "jasmine", "rose", "ruby", "grace",
-            "claire", "chloe", "sophie", "isabel", "isabella", "natasha",
-        }
-        name_lower = (child_name or "").lower().strip().split()[0]
-        if name_lower in _GIRL_NAMES:
-            gender, outfit = "girl", "yellow sundress and white sandals"
+        ov = (gender_override or "").strip().lower()
+        if ov in ("boy", "girl"):
+            gender = ov
         else:
-            gender, outfit = "boy", "red t-shirt and blue shorts and white sneakers"
+            name_parts = (child_name or "").lower().strip().split()
+            name_lower = name_parts[0] if name_parts else ""
+            gender = "girl" if name_lower in _GIRL_NAMES else "boy"
+        outfit = ("yellow sundress and white sandals" if gender == "girl"
+                  else "red t-shirt and blue shorts and white sneakers")
 
         return (
             f"a {age}-year-old {gender} with short black hair, dark brown eyes, "
@@ -208,22 +215,19 @@ def _build_character_anchor(child_name: str, child_age: int, avatar_desc: str) -
             desc = desc[len(prefix):]
             break
 
-    # Detect gender word from the vision description so FLUX gets an explicit signal
+    # Detect gender: explicit override > vision description > name lookup
+    ov = (gender_override or "").strip().lower()
     desc_lower = desc.lower()
-    if desc_lower.startswith("girl") or ", girl" in desc_lower or "female" in desc_lower:
+    if ov in ("boy", "girl"):
+        gender = ov
+    elif desc_lower.startswith("girl") or ", girl" in desc_lower or "female" in desc_lower:
         gender = "girl"
     elif desc_lower.startswith("boy") or ", boy" in desc_lower or "male" in desc_lower:
         gender = "boy"
     else:
-        _GIRL_NAMES_SET = {
-            "fatima", "aisha", "zara", "sara", "maryam", "amina", "layla", "hana",
-            "sofia", "emma", "olivia", "lily", "ella", "noor", "hira", "sana",
-            "nadia", "maria", "lena", "nina", "ana", "anna", "luna", "maya",
-            "lila", "leila", "yasmin", "jasmine", "rose", "ruby", "grace",
-            "claire", "chloe", "sophie", "isabel", "isabella", "natasha",
-        }
-        name_lower = (child_name or "").lower().strip().split()[0]
-        gender = "girl" if name_lower in _GIRL_NAMES_SET else "boy"
+        name_parts = (child_name or "").lower().strip().split()
+        name_lower = name_parts[0] if name_parts else ""
+        gender = "girl" if name_lower in _GIRL_NAMES else "boy"
 
     return f"a {age}-year-old {gender} with {desc}, {_pixar3d}"
 
@@ -800,6 +804,7 @@ def _generate_video_prompts_for_scenes(
     character_anchor: str,
     total_scenes: int,
     provider: str = "groq",
+    allow_rule_fallback: bool = True,
 ) -> list:
     """
     Pass-3: for each scene text, ask the LLM to write a Kling i2v motion script.
@@ -964,11 +969,15 @@ def _generate_video_prompts_for_scenes(
             if valid > 0:
                 return result
         logger.warning(
-            "Pass-3 returned %d prompts for %d scenes — using rule fallback",
+            "Pass-3 returned %d prompts for %d scenes",
             len(prompt_list) if isinstance(prompt_list, list) else 0,
             len(scenes),
         )
+        if not allow_rule_fallback:
+            raise RuntimeError("Pass-3 produced no valid prompts")
     except Exception as exc:
+        if not allow_rule_fallback:
+            raise
         logger.warning("Pass-3 video prompt generation failed: %s — using rule fallback", exc)
 
     # Rule-based fallback
@@ -999,6 +1008,7 @@ def _generate_story_with_llm(
 
     child_name = input_data.get("child_name", "the child")
     child_age = input_data.get("child_age", 7)
+    avatar_desc = input_data.get("avatar_description", "a friendly child")
     moral_theme = input_data.get("moral_theme", "kindness")
     preferred_language = (input_data.get("preferred_language") or "en").lower()
     language_label = "Urdu" if preferred_language == "ur" else "English"
@@ -1008,7 +1018,7 @@ def _generate_story_with_llm(
         "You are a children's interactive storytelling engine. "
         "Return ONLY valid JSON, no extra text.\n"
         "JSON structure:\n"
-        "  {\"title\": string, \"avatar_used\": bool, \"character_visual\": string, \"scenes\": [\n"
+        "  {\"title\": string, \"avatar_used\": bool, \"protagonist_gender\": \"boy\" or \"girl\", \"character_visual\": string, \"scenes\": [\n"
         "    {\"id\": int, \"text\": string, \"image_prompt\": \"\", \"decision\": null or {\"A\": string, \"B\": string},\n"
         "     \"tts_prompt\": [{\"role\": string, \"text\": string}]}\n"
         "  ]}\n"
@@ -1018,7 +1028,9 @@ def _generate_story_with_llm(
         "  - Scene flow: (1) intro/setup, (2) rising action, (3) first challenge + decision, "
         "(4) consequence of decision, (5) climax + second decision, (6) resolution with moral lesson.\n"
         f"  - All scene `text` and decision texts in {language_label}.\n"
-        "  - Each scene `text` must be EXACTLY 18-22 words (2-3 sentences). Count strictly — this controls video clip timing.\n"
+        "  - The ENTIRE story (all 6 scene `text` fields combined) must be 150 words or fewer.\n"
+        "  - Divide those words across the 6 scenes naturally — scenes may vary in length "
+        "(roughly 15-30 words each); do not pad. Each scene's length sets its video clip timing.\n"
         "  - Each scene `text` must contain a VISIBLE PHYSICAL ACTION — something that can be shown in an image.\n"
         "    GOOD: 'Ali picked up the wallet from the dusty road.' (physical, visible)\n"
         "    BAD:  'Ali thought about what he should do.' (inner thought — invisible, cannot be illustrated)\n"
@@ -1033,8 +1045,10 @@ def _generate_story_with_llm(
         f"  - Use {child_name}'s name naturally in every scene's first sentence — they are always the subject.\n"
         "  - Scene 1 must show the character actively doing something specific from the very first sentence — never open with 'Once upon a time there was...' alone.\n"
         "  - Every scene must be in a DIFFERENT location or show a clear visual change from the previous scene — no two consecutive scenes in identical settings.\n"
-        f"  - character_visual: A single string (≤80 words) describing the protagonist's FULL appearance for image generation. "
-        f"Include: age, hair colour/style, eye colour, skin tone, exact clothing with colours and any accessories. "
+        f"  - protagonist_gender: REQUIRED. Must be \"boy\" or \"girl\" and MUST match the pronouns you use for {child_name} in the story (if you write \"she/her\", it is \"girl\").\n"
+        f"  - character_visual: REQUIRED, NEVER empty. A single string (≤80 words) describing the protagonist's FULL appearance for image generation. "
+        f"It MUST begin by stating the gender (the same gender as protagonist_gender). "
+        f"Include: age, gender, hair colour/style, eye colour, skin tone, exact clothing with colours and any accessories. "
         f"Be concrete and culturally specific to {child_name}'s likely background. "
         f"Example: \"8-year-old Pakistani girl, warm olive skin, long dark hair in two braids, big round brown eyes, bright pink shalwar kameez with gold embroidery, small red earrings\". "
         f"This string is injected verbatim into every image prompt — NEVER change it between scenes.\n"
@@ -1069,9 +1083,17 @@ def _generate_story_with_llm(
     # Use LLM-generated character_visual as anchor when no avatar is provided.
     # Avatar stories keep the vision-analysis anchor (more accurate than LLM imagination).
     character_visual = data.pop("character_visual", None)
-    if character_visual and not input_data.get("avatar_path"):
-        character_anchor = f"{character_visual.rstrip('. ')}, Pixar-style rounded face, large expressive eyes, soft 3D volume, smooth CGI proportions"
-        logger.info("Character anchor updated from LLM character_visual (%d chars)", len(character_anchor))
+    protagonist_gender = (data.pop("protagonist_gender", "") or "").strip().lower()
+    if not input_data.get("avatar_path"):
+        if character_visual:
+            character_anchor = f"{character_visual.rstrip('. ')}, Pixar-style rounded face, large expressive eyes, soft 3D volume, smooth CGI proportions"
+            logger.info("Character anchor updated from LLM character_visual (%d chars)", len(character_anchor))
+        elif protagonist_gender in ("boy", "girl"):
+            # character_visual missing — rebuild the name-based anchor with the LLM's gender
+            character_anchor = _build_character_anchor(
+                child_name, child_age, avatar_desc, gender_override=protagonist_gender
+            )
+            logger.info("Character anchor rebuilt with LLM protagonist_gender=%s", protagonist_gender)
 
     data["character_anchor"] = character_anchor
 
@@ -1102,13 +1124,29 @@ def _generate_story_with_llm(
         if _vp == "openai" and not os.getenv("OPENAI_API_KEY"):
             continue
         try:
-            vps = _generate_video_prompts_for_scenes(scenes, character_anchor, len(scenes), _vp)
+            vps = _generate_video_prompts_for_scenes(
+                scenes, character_anchor, len(scenes), _vp, allow_rule_fallback=False
+            )
             if vps and any(v for v in vps):
                 video_prompts = vps
                 logger.info("Pass-3 video prompts via provider: %s", _vp)
                 break
         except Exception as _vpe:
             logger.warning("Pass-3 provider %s failed: %s", _vp, _vpe)
+
+    # All LLM providers failed — fall back to rule-based prompts once for all scenes.
+    if not video_prompts:
+        from ai_modules.prompt_builder import build_video_prompt as _rule
+        logger.warning("Pass-3: all providers failed — using rule fallback for all scenes")
+        video_prompts = [
+            _rule(
+                text=(s.get("text") or "") if isinstance(s, dict) else "",
+                character_anchor=character_anchor,
+                position=i,
+                total_scenes=len(scenes),
+            )
+            for i, s in enumerate(scenes, 1)
+        ]
 
     if video_prompts:
         for i, scene in enumerate(scenes):

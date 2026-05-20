@@ -285,8 +285,9 @@ def build_video_prompt(
         f'{camera.capitalize()}. '
         f'{env_anim.capitalize()}. '
         f'{mood.capitalize()}. '
-        f'Smooth 2D cel-shaded anime animation, fluid natural character motion, '
-        f'expressive face, vibrant colors, cinematic children\'s story quality.'
+        f'Disney-Pixar 3D CGI animation, the character is a rendered 3D figure with '
+        f'volume and weight, fluid natural motion, soft volumetric lighting, '
+        f'cinematic depth of field. Character stays centered, full body in frame.'
     )
 
     return prompt

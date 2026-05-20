@@ -2,13 +2,11 @@
 Image-to-video clip generation for the cinematic pipeline.
 
 Provider priority:
-  1. LTX-Video 2.3 on Modal.com (open-source, A10G GPU, ~4s clip)
-  2. ModelsLab Kling v2.1 i2v (fast, 1080p, character-consistent animation)
-  3. ModelsLab basic img2video (v6, cheap fallback)
-  4. Stability AI SVD (last-resort fallback)
-
-LTX Modal is used when MODAL_LTX_ENDPOINT is set in the environment.
-Falls back to Kling automatically if Modal is unavailable or errors.
+  1. Wan 2.1 on Modal.com  (MODAL_WAN_ENDPOINT)  — best open-source quality, 480p, 16fps
+  2. LTX-Video 2.3 on Modal.com (MODAL_LTX_ENDPOINT) — fast fallback
+  3. ModelsLab Kling v2.1 i2v  — best commercial, 1080p, prompt-guided
+  4. ModelsLab basic img2video  — cheap fallback
+  5. Stability AI SVD           — last resort
 
 Returns a local .mp4 path on success, raises on failure.
 """
@@ -47,6 +45,10 @@ def _modal_ltx_endpoint() -> str:
     return os.getenv("MODAL_LTX_ENDPOINT", "").strip()
 
 
+def _modal_wan_endpoint() -> str:
+    return os.getenv("MODAL_WAN_ENDPOINT", "").strip()
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -83,14 +85,24 @@ def generate_clip(
             "smooth camera movement, vivid colors, characters moving naturally"
         )
 
-    # Always 5s Kling clips — scenes are 10-12 words (~5s TTS) so clip and
-    # narration finish together with no looping. Keeps API cost per story ~$2.10.
-    effective_duration = 5
+    # Clip length follows the scene's narration so video and audio finish together.
+    effective_duration = audio_duration if audio_duration else duration
 
-    # LTX-Video 2.3 on Modal (sole provider when endpoint is configured)
+    # 1. Wan 2.1 on Modal (best open-source quality)
+    if _modal_wan_endpoint():
+        try:
+            return _wan_modal(image_path, output_path, prompt, duration=effective_duration)
+        except Exception as exc:
+            logger.error("Wan 2.1 Modal failed: %s — trying LTX", exc)
+
+    # 2. LTX-Video 2.3 on Modal (fast fallback)
     if _modal_ltx_endpoint():
-        return _ltx_modal(image_path, output_path, prompt)
+        try:
+            return _ltx_modal(image_path, output_path, prompt, duration=effective_duration)
+        except Exception as exc:
+            logger.error("LTX Modal failed: %s — trying Kling", exc)
 
+    # 3. Kling v2.1 via ModelsLab
     ml_key = _modelslab_key()
     if ml_key:
         try:
@@ -105,6 +117,7 @@ def generate_clip(
     else:
         logger.error("MODELSLAB_API_KEY not set — skipping ModelsLab providers")
 
+    # 5. Stability SVD last resort
     st_key = _stability_key()
     if st_key:
         try:
@@ -118,12 +131,55 @@ def generate_clip(
 
 
 # ---------------------------------------------------------------------------
-# LTX-Video 2.3 on Modal.com (primary provider)
+# Wan 2.1 on Modal.com (primary provider)
 # ---------------------------------------------------------------------------
 
-def _ltx_modal(image_path: str, output_path: str, prompt: str) -> str:
-    """Generate a ~4s clip via LTX-Video 2.3 running on Modal.com A10G GPU."""
-    import base64
+def _wan_modal(image_path: str, output_path: str, prompt: str, duration: float = 5.0) -> str:
+    """Generate a clip via Wan 2.1 running on Modal.com A10G GPU."""
+    import base64, random
+    endpoint = _modal_wan_endpoint()
+    if not endpoint:
+        raise RuntimeError("MODAL_WAN_ENDPOINT not set")
+
+    with open(image_path, "rb") as f:
+        image_b64 = base64.b64encode(f.read()).decode()
+
+    # Wan 2.1 runs at 16fps. Cap at 121 frames (~7.5s) — model limit.
+    num_frames = min(121, max(17, int(duration * 16)))
+
+    logger.info("img2video [Wan 2.1 Modal]: %d frames (%.1fs) posting to %s", num_frames, duration, endpoint)
+    resp = requests.post(
+        endpoint,
+        json={
+            "image": image_b64,
+            "prompt": prompt[:500],
+            "negative_prompt": "worst quality, inconsistent motion, blurry, jittery, distorted, static, no movement",
+            "num_frames": num_frames,
+            "fps": 16,
+            "seed": random.randint(0, 2**32 - 1),  # unique per scene
+        },
+        timeout=600,  # cold start ~2 min + generation ~2 min
+    )
+    resp.raise_for_status()
+    data = resp.json()
+
+    video_bytes = base64.b64decode(data["video"])
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, "wb") as f:
+        f.write(video_bytes)
+
+    size_mb = len(video_bytes) / 1e6
+    logger.info("Wan 2.1 Modal clip saved: %s (%.1f MB)", output_path, size_mb)
+    return output_path
+
+
+# ---------------------------------------------------------------------------
+# LTX-Video 2.3 on Modal.com (fallback)
+# ---------------------------------------------------------------------------
+
+def _ltx_modal(image_path: str, output_path: str, prompt: str, duration: float = 5.0) -> str:
+    """Generate a clip via LTX-Video 2.3 running on Modal.com A10G GPU."""
+    import base64, random
     endpoint = _modal_ltx_endpoint()
     if not endpoint:
         raise RuntimeError("MODAL_LTX_ENDPOINT not set")
@@ -131,16 +187,19 @@ def _ltx_modal(image_path: str, output_path: str, prompt: str) -> str:
     with open(image_path, "rb") as f:
         image_b64 = base64.b64encode(f.read()).decode()
 
-    logger.info("img2video [LTX Modal]: posting to %s", endpoint)
+    # LTX runs at 24fps. Cap at 241 frames (~10s).
+    num_frames = min(241, max(49, int(duration * 24)))
+
+    logger.info("img2video [LTX Modal]: %d frames (%.1fs) posting to %s", num_frames, duration, endpoint)
     resp = requests.post(
         endpoint,
         json={
             "image": image_b64,
             "prompt": prompt[:500],
-            "num_frames": 241,   # ~10s at 24fps
-            "seed": 42,
+            "num_frames": num_frames,
+            "seed": random.randint(0, 2**32 - 1),  # unique per scene
         },
-        timeout=480,  # cold start ~2 min + generation ~1 min
+        timeout=480,
     )
     resp.raise_for_status()
     data = resp.json()
@@ -190,7 +249,7 @@ def _kling_v21(image_path: str, output_path: str, duration: int, prompt: str, ke
     image_url = _public_image_url(image_path)
     logger.info("img2video [Kling v2.1]: %s", image_url)
 
-    kling_duration = "5"  # effective_duration is always 5 (budget mode)
+    kling_duration = "10" if (duration and duration >= 6.0) else "5"
 
     payload = {
         "key": key,

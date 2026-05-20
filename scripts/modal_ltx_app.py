@@ -45,8 +45,9 @@ with ltx_image.imports():
 
 
 @app.cls(
-    gpu="A10G",
+    gpu="A100",
     image=ltx_image,
+    secrets=[modal.Secret.from_name("huggingface")],
     timeout=600,
     scaledown_window=300,
 )
@@ -58,7 +59,6 @@ class LTXModel:
         self.pipe = LTXImageToVideoPipeline.from_pretrained(
             MODEL_ID, torch_dtype=torch.bfloat16
         ).to("cuda")
-        self.pipe.vae.enable_tiling()  # tiles VAE decode to avoid OOM on 241 frames
 
     @modal.method()
     def generate(
@@ -68,12 +68,14 @@ class LTXModel:
         negative_prompt: str = "worst quality, inconsistent motion, blurry, jittery, distorted",
         num_frames: int = 241,   # ~10 seconds at 24 fps
         fps: int = 24,
-        height: int = 288,
-        width: int = 512,
+        height: int = 480,
+        width: int = 704,
         num_inference_steps: int = 40,
         guidance_scale: float = 3.5,
         seed: int = 42,
     ) -> bytes:
+        import os
+        import tempfile
         image_bytes = base64.b64decode(image_b64)
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         generator = torch.Generator(device="cuda").manual_seed(seed)
@@ -92,13 +94,19 @@ class LTXModel:
         )
 
         frames = output.frames[0]
-        buf = io.BytesIO()
-        writer = imageio.get_writer(buf, format="mp4", fps=fps, codec="libx264",
-                                    output_params=["-crf", "23"])
-        for frame in frames:
-            writer.append_data(np.array(frame))
-        writer.close()
-        return buf.getvalue()
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".mp4")
+        os.close(tmp_fd)
+        try:
+            writer = imageio.get_writer(tmp_path, fps=fps, codec="libx264",
+                                        output_params=["-crf", "23"])
+            for frame in frames:
+                writer.append_data(np.array(frame))
+            writer.close()
+            with open(tmp_path, "rb") as f:
+                return f.read()
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
 
 
 @app.function(image=ltx_image)
