@@ -879,10 +879,12 @@ def _generate_video_prompts_for_scenes(
 
         "For each scene, write a motion script of exactly 3 sentences (max 450 characters total) that tells "
         "the image-to-video AI:\n"
-        "  Sentence 1 — CHARACTER MOTION: what the character's body does in the first half of the clip. "
-        "Name specific limbs, direction, and speed. The character is a 3D rendered figure with volume and weight.\n"
-        "  Sentence 2 — CHARACTER CONTINUATION: what the character does in the second half (completing the action or reacting). "
-        "Keep motion flowing naturally — avoid abrupt stops.\n"
+        "  Sentence 1 — PRIMARY ACTION: the single most important physical action stated in THIS scene's text. "
+        "Name the exact body part(s) AND the exact object(s) the narration names (basket, stick, dog, bridge…). "
+        "The character is a 3D rendered figure with volume and weight.\n"
+        "  Sentence 2 — SECOND BEAT or COMPLETION: if the scene's text states a second action "
+        "(e.g. 'pulled the dog up, THEN her hat blew away'), animate that second beat next, in order. "
+        "Otherwise complete or react to the primary action. NEVER invent an action the text does not state.\n"
         "  Sentence 3 — CAMERA + ENVIRONMENT: how the camera moves AND what moves in the background. "
         "Use cinematic 3D camera language — depth of field, bokeh, volumetric light rays.\n\n"
 
@@ -900,6 +902,10 @@ def _generate_video_prompts_for_scenes(
         "'returned the wallet' → arm extends handing object. "
         "'found a wallet' → character stops and crouches toward ground. "
         "NEVER write generic idle animation (swaying, blinking) when a specific action is narrated.\n"
+        "  - NARRATION LOCK: Animate ONLY actions written in THIS scene's text, and reuse its exact action "
+        "verbs and objects. Do NOT borrow an action from another scene, and do NOT drop the scene's key action. "
+        "The '[follows scene: …]' note is ONLY for picking a DIFFERENT camera angle than the previous clip — "
+        "never animate the previous scene's action.\n"
         "  - MOTION ONLY — never describe colour, composition, or art style (the image already shows those).\n"
         "  - Be specific: 'steps forward with left foot, arms swinging naturally, then reaches out right hand toward the object' "
         "not just 'walks'.\n"
@@ -954,7 +960,13 @@ def _generate_video_prompts_for_scenes(
 
         "[EMOTIONAL scene — no physical action] \"Omar felt deeply ashamed and could not look up.\"\n"
         "→ {\"video_prompt\": \"Character's head bows forward slowly, shoulders curl inward, one hand rises to cover face. "
-        "Camera holds tight on face; volumetric light dims, soft shadow spreads across 3D scene. "
+        "Static wide shot holds on the full body; volumetric light dims, soft shadow spreads across 3D scene. "
+        "Character stays centered, full body in frame.\"}\n\n"
+
+        "[TWO-BEAT scene — animate BOTH beats in order] \"Tooba pulled the dog to safety with the stick, then her straw hat blew into the river.\"\n"
+        "→ {\"video_prompt\": \"Character leans back pulling the long stick with both hands, drawing the dog up onto the bank. "
+        "Then she turns sharply as a gust lifts her straw hat off her head toward the water, one hand reaching after it. "
+        "Gentle pan follows the action; river ripples, wind bends the reeds, leaves scatter. "
         "Character stays centered, full body in frame.\"}"
     )
 
@@ -975,7 +987,7 @@ def _generate_video_prompts_for_scenes(
         prompt_list = data.get("scenes", [])
         if isinstance(prompt_list, list) and len(prompt_list) == len(scenes):
             result = []
-            for p in prompt_list:
+            for idx, p in enumerate(prompt_list):
                 if not isinstance(p, dict):
                     result.append(None)
                     continue
@@ -1002,6 +1014,16 @@ def _generate_video_prompts_for_scenes(
                             logger.warning("Pass-3: fewer than 3 sentences (expected 3): %s…", vp[:80])
                         if len(content_body) < 40:
                             logger.warning("Pass-3: prompt body too short (%d chars before ending tag): %s", len(content_body), vp)
+                        # Soft narration-drift check: warn if the motion shares no significant
+                        # content word with this scene's text (no auto-patch — motion prompts differ).
+                        _sc = scenes[idx] if idx < len(scenes) else None
+                        if isinstance(_sc, dict):
+                            _scene_words = {
+                                w.lower().strip(".,!?\"'-()") for w in (_sc.get("text") or "").split()
+                                if len(w) > 3 and w.lower().strip(".,!?\"'-()") not in _SKIP_WORDS
+                            }
+                            if _scene_words and not (_scene_words & set(vp.lower().split())):
+                                logger.warning("Pass-3: scene %d motion shares no content word with narration: %s…", idx + 1, vp[:80])
                 result.append(vp if vp else None)
             valid = sum(1 for r in result if r)
             logger.info("Pass-3 video prompts generated: %d/%d valid", valid, len(result))
