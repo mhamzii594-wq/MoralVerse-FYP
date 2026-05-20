@@ -241,6 +241,7 @@ def _generate_image_prompts_for_scenes(
     character_anchor: str,
     child_name: str,
     provider: str,
+    supporting_characters: list | None = None,
 ) -> list:
     """
     Pass-2: translate each scene text into a FLUX image prompt.
@@ -267,29 +268,47 @@ def _generate_image_prompts_for_scenes(
     if not scene_lines:
         return []
 
+    # Locked descriptions for recurring secondary characters (from Pass 1) — reused verbatim
+    # in the 'others' field so they look identical every time they appear.
+    _sc_block = ""
+    if supporting_characters:
+        _lines = [
+            f"  - {c.get('name','?')}: {c.get('visual','').strip()}"
+            for c in supporting_characters
+            if isinstance(c, dict) and c.get("visual")
+        ]
+        if _lines:
+            _sc_block = (
+                "RECURRING CHARACTERS (locked descriptions — when a scene includes one of these "
+                "people, the 'others' field MUST reuse their description below VERBATIM, never invent a new look):\n"
+                + "\n".join(_lines) + "\n\n"
+            )
+
     system = (
         "You are a professional prompt engineer specialising in FLUX text-to-image AI for "
         "children's picture books.\n\n"
 
         "YOUR ONLY JOB: for each scene sentence, extract the 5 pure visual fields listed below.\n"
-        f"The protagonist's EXACT character description is: \"{character_anchor}\"\n"
-        "CRITICAL: The 'action' field MUST start with this EXACT character description (copy verbatim), "
-        "then describe the physical movement. This makes the character appear identically in every scene.\n"
+        f"For context, the protagonist is: \"{character_anchor}\"\n"
+        "Do NOT repeat the character description in your output — code prepends it automatically. "
+        "The 'action' field must contain ONLY the protagonist's physical movement (no appearance, no name).\n"
         "You do NOT write the art style tag — that is added by code.\n"
         "You write ONLY what changes between scenes: action, props, setting, others, lighting.\n\n"
+
+        + _sc_block +
 
         "══════════════════════════════════════════════\n"
         "THE 5 FIELDS — rules for each\n"
         "══════════════════════════════════════════════\n\n"
 
         "FIELD 1 — action  (REQUIRED, never empty)\n"
-        f"  START with this EXACT text: \"{character_anchor}\"\n"
-        "  Then add a comma and describe the character's precise physical movement right now.\n"
+        "  Describe ONLY the character's precise physical movement right now — NO appearance, NO name "
+        "(code adds the character description automatically).\n"
         "  Must contain: a concrete movement verb + the body part performing it.\n"
-        f"  ✓ Good: '{character_anchor}, crouching on the ground, both hands cupped around a sparrow'\n"
-        f"  ✓ Good: '{character_anchor}, extending both arms forward, holding a trophy toward a teacher'\n"
-        f"  ✓ Good: '{character_anchor}, climbing a tree trunk, left foot on a branch, right hand clutching bark'\n"
-        "  ✗ Bad: writing just the movement without the character description prefix\n"
+        "  ✓ Good: 'crouching on the ground, both hands cupped around a sparrow'\n"
+        "  ✓ Good: 'extending both arms forward, holding a trophy toward a teacher'\n"
+        "  ✓ Good: 'climbing a tree trunk, left foot on a branch, right hand clutching bark'\n"
+        "  ✗ Bad: starting with the character's appearance/age/clothing (that is added by code)\n"
         "  ✗ Bad:  'feeling scared'  'thinking about'  'realizing the truth'  'learning a lesson'\n"
         "  EMOTION → BODY LANGUAGE — never write emotion words, translate them:\n"
         "    scared/terrified → wide eyes, one foot stepped back, both hands raised\n"
@@ -321,7 +340,9 @@ def _generate_image_prompts_for_scenes(
         "  ✓ 'a small injured brown sparrow with one drooping wing' not 'a bird'\n"
         "  If scene has multiple objects, list all: 'a blue lunchbox and a wrapped white sandwich'\n"
         "  PROP CONSISTENCY: If a prop appeared in an earlier scene, use the exact same "
-        "description (same color, size, material) — do not abbreviate or vary it.\n\n"
+        "description (same color, size, material) — do not abbreviate or vary it.\n"
+        "  OUTFIT LOCK: Never change the protagonist's clothing between scenes — code handles their "
+        "appearance, so do not add or alter clothing in any field.\n\n"
 
         "FIELD 3 — setting  (REQUIRED, never empty)\n"
         "  Location name + exactly 2 specific visible background elements.\n"
@@ -330,7 +351,9 @@ def _generate_image_prompts_for_scenes(
         "  ✓ 'school classroom with rows of wooden desks and a green chalkboard on the wall'\n"
         "  ✓ 'forest path with tall trees casting long shadows and moss-covered rocks'\n"
         "  ✓ 'home living room with a wooden cabinet and framed family photos on the wall'\n"
-        "  ✓ 'grassy school playground with a metal swing set and a red brick school building'\n\n"
+        "  ✓ 'grassy school playground with a metal swing set and a red brick school building'\n"
+        "  SETTING CONSISTENCY: If consecutive scenes share a location, reuse the same setting "
+        "description so the place looks identical between clips.\n\n"
 
         "FIELD 4 — others  (REQUIRED if scene mentions another person; empty string if none)\n"
         "  Visual description of every other person in the scene. NEVER use their name.\n"
@@ -551,10 +574,12 @@ def _assemble_scene_prompt(anchor: str, fields: dict, scene_text: str = "") -> s
     If the LLM returned an empty action field (invariant #3 violation), fall back
     to the first sentence of the scene text so the anchor never becomes token 1.
     """
+    from ai_modules.prompt_builder import _condense_character
+    condensed = _condense_character(anchor)
+
     action = (fields.get("action") or "").strip().rstrip(",.")
     if not action:
-        # Invariant #3 violation — derive a minimal action from scene text so FLUX
-        # still gets an action token before the character anchor.
+        # Pass 2 returned an empty action — derive a minimal one from the scene text.
         if scene_text:
             action = scene_text.split(".")[0].strip()
             logger.warning(
@@ -562,11 +587,15 @@ def _assemble_scene_prompt(anchor: str, fields: dict, scene_text: str = "") -> s
                 action[:60],
             )
         else:
-            logger.warning("_assemble_scene_prompt: 'action' field empty and no scene_text — anchor will be first token (invariant #3 broken)")
+            logger.warning("_assemble_scene_prompt: 'action' field empty and no scene_text")
     parts = []
+    # Code-injected condensed character anchor FIRST — guarantees correct, consistent
+    # identity tokens without relying on the LLM to copy the full description verbatim,
+    # and frees the CLIP token budget for the scene-specific action below.
+    if condensed:
+        parts.append(condensed)
     if action:
-        parts.append(action)   # ACTION FIRST — includes character description (from Pass 2 instruction)
-    # character anchor is now embedded inside the action field by the Pass 2 LLM
+        parts.append(action)
     for key in ("props", "setting", "others", "lighting"):
         val = (fields.get(key) or "").strip().rstrip(",.")
         if val:
@@ -600,9 +629,11 @@ def _validate_and_patch_prompt(prompt: str, scene_text: str, anchor: str) -> str
        short action verbs) and patch any missing ones. Threshold is >= 1 missing word
        (was > 2) so even a single absent key term triggers a patch.
     """
-    # Pass 1: anchor must appear early in the prompt
+    # Pass 1: anchor must appear early in the prompt (prepend the condensed form to match
+    # _assemble_scene_prompt and avoid token bloat if it is somehow missing)
     if anchor[:25].lower() not in prompt.lower():
-        prompt = anchor + ", " + prompt
+        from ai_modules.prompt_builder import _condense_character
+        prompt = _condense_character(anchor) + ", " + prompt
 
     # Pass 2: key content-word coverage (includes short verbs like run/hit/eat/fly)
     scene_words = [
@@ -842,18 +873,26 @@ def _generate_video_prompts_for_scenes(
             scene_lines.append(f"[{position_label}]{prev_context} Scene {s.get('id', i)}: \"{txt}\"")
 
     system = (
-        "You are an AI video director writing Kling i2v motion scripts for a children's Pixar-style 3D animated story.\n\n"
+        "You are an AI video director writing image-to-video motion scripts for a children's Pixar-style 3D animated story.\n\n"
 
         f"CHARACTER appearing in every scene: {condensed_char}\n\n"
 
         "For each scene, write a motion script of exactly 3 sentences (max 450 characters total) that tells "
-        "the LTX image-to-video AI:\n"
+        "the image-to-video AI:\n"
         "  Sentence 1 — CHARACTER MOTION: what the character's body does in the first half of the clip. "
         "Name specific limbs, direction, and speed. The character is a 3D rendered figure with volume and weight.\n"
         "  Sentence 2 — CHARACTER CONTINUATION: what the character does in the second half (completing the action or reacting). "
         "Keep motion flowing naturally — avoid abrupt stops.\n"
         "  Sentence 3 — CAMERA + ENVIRONMENT: how the camera moves AND what moves in the background. "
         "Use cinematic 3D camera language — depth of field, bokeh, volumetric light rays.\n\n"
+
+        "IDENTITY & STABILITY (CRITICAL for this model):\n"
+        "  - Keep the character's face, proportions, and outfit IDENTICAL throughout the clip — "
+        "natural weight and momentum, NO morphing, melting, warping, face-shifting, or extra limbs.\n"
+        "  - Prefer SMOOTH, limited-range, physically-plausible motion. Avoid huge or fast full-body "
+        "movements that distort the character. Subtle, believable motion looks best.\n"
+        "  - Keep the camera SIMPLE (slow push-in, gentle pan, static wide, or pull-back). Do not request "
+        "complex or fast camera moves the model cannot do cleanly.\n\n"
 
         "STRICT RULES:\n"
         "  - NARRATION SYNC: The motion you write must animate EXACTLY what the narration describes. "
@@ -899,8 +938,8 @@ def _generate_video_prompts_for_scenes(
         "Character stays centered, full body in frame.\"}\n\n"
 
         "[MIDDLE scene 3/6] \"She noticed the old rusty well filled with debris and decided to clean it.\"\n"
-        "→ {\"video_prompt\": \"Character stops, head snaps toward the well, hands move to hips with weight. "
-        "Camera rack-focuses to face; leaves drift past, well water ripples, volumetric dust motes. "
+        "→ {\"video_prompt\": \"Character stops, head turns toward the well, hands settle on hips with weight. "
+        "Camera tracks gently alongside at full-body distance; leaves drift past, well water ripples, volumetric dust motes. "
         "Character stays centered, full body in frame.\"}\n\n"
 
         "[CLOSING scene] \"Tooba smiled as the clean well sparkled in the afternoon light.\"\n"
@@ -909,8 +948,8 @@ def _generate_video_prompts_for_scenes(
         "Character stays centered, full body in frame.\"}\n\n"
 
         "[DECISION scene] \"She found a wallet on the street. Should she keep the money or return it?\"\n"
-        "→ {\"video_prompt\": \"Character stops walking, crouches slowly, hand reaching toward wallet with hesitation. "
-        "Camera rack-focuses to hand and wallet; dust particles drift, shallow depth of field blurs background. "
+        "→ {\"video_prompt\": \"Character stops walking, crouches slowly, one hand reaching toward the wallet with hesitation. "
+        "Static wide shot holds on the full body; dust particles drift, shallow depth of field blurs the background. "
         "Character stays centered, full body in frame.\"}\n\n"
 
         "[EMOTIONAL scene — no physical action] \"Omar felt deeply ashamed and could not look up.\"\n"
@@ -999,6 +1038,35 @@ def _generate_video_prompts_for_scenes(
 # Pass 1 — story text generation
 # ---------------------------------------------------------------------------
 
+def _validate_story_structure(data: dict, has_avatar: bool = False) -> list:
+    """Return a list of human-readable structural problems with a Pass-1 story
+    (empty list = valid). Used to trigger a single repair retry."""
+    errors = []
+    scenes = data.get("scenes")
+    if not isinstance(scenes, list) or len(scenes) != 6:
+        errors.append(f"Must have EXACTLY 6 scenes (got {len(scenes) if isinstance(scenes, list) else 'none'}).")
+        return errors  # further checks need 6 scenes
+
+    for i, sc in enumerate(scenes, 1):
+        has_decision = isinstance(sc, dict) and isinstance(sc.get("decision"), dict)
+        if i in (3, 5) and not has_decision:
+            errors.append(f"Scene {i} must have a non-null decision with A and B options.")
+        if i not in (3, 5) and has_decision:
+            errors.append(f"Scene {i} must NOT have a decision (only scenes 3 and 5 do).")
+        if not (isinstance(sc, dict) and (sc.get("text") or "").strip()):
+            errors.append(f"Scene {i} has empty text.")
+
+    if (data.get("protagonist_gender") or "").strip().lower() not in ("boy", "girl"):
+        errors.append("protagonist_gender must be 'boy' or 'girl'.")
+    if not has_avatar and not (data.get("character_visual") or "").strip():
+        errors.append("character_visual is required and must be non-empty.")
+
+    total_words = sum(len((sc.get("text") or "").split()) for sc in scenes if isinstance(sc, dict))
+    if total_words > 170:
+        errors.append(f"Total story is {total_words} words; keep it to ~150 or fewer.")
+    return errors
+
+
 def _generate_story_with_llm(
     input_data: Dict[str, Any],
     provider: str,
@@ -1018,7 +1086,8 @@ def _generate_story_with_llm(
         "You are a children's interactive storytelling engine. "
         "Return ONLY valid JSON, no extra text.\n"
         "JSON structure:\n"
-        "  {\"title\": string, \"avatar_used\": bool, \"protagonist_gender\": \"boy\" or \"girl\", \"character_visual\": string, \"scenes\": [\n"
+        "  {\"title\": string, \"avatar_used\": bool, \"protagonist_gender\": \"boy\" or \"girl\", \"character_visual\": string, "
+        "\"supporting_characters\": [{\"name\": string, \"visual\": string}], \"scenes\": [\n"
         "    {\"id\": int, \"text\": string, \"image_prompt\": \"\", \"decision\": null or {\"A\": string, \"B\": string},\n"
         "     \"tts_prompt\": [{\"role\": string, \"text\": string}]}\n"
         "  ]}\n"
@@ -1028,21 +1097,25 @@ def _generate_story_with_llm(
         "  - Scene flow: (1) intro/setup, (2) rising action, (3) first challenge + decision, "
         "(4) consequence of decision, (5) climax + second decision, (6) resolution with moral lesson.\n"
         f"  - All scene `text` and decision texts in {language_label}.\n"
-        "  - The ENTIRE story (all 6 scene `text` fields combined) must be 150 words or fewer.\n"
-        "  - Divide those words across the 6 scenes naturally — scenes may vary in length "
-        "(roughly 15-30 words each); do not pad. Each scene's length sets its video clip timing.\n"
+        "  - Each scene `text` is ~15-25 words (1-2 short sentences); the 6 scenes combined must not "
+        "exceed ~150 words. Vary scene length naturally; do not pad. Each scene's length sets its clip timing.\n"
         "  - Each scene `text` must contain a VISIBLE PHYSICAL ACTION — something that can be shown in an image.\n"
         "    GOOD: 'Ali picked up the wallet from the dusty road.' (physical, visible)\n"
         "    BAD:  'Ali thought about what he should do.' (inner thought — invisible, cannot be illustrated)\n"
         "    Even emotional scenes must anchor to a physical posture: 'Sara sat alone, hugging her knees.'\n"
         "  - Decision option format: 10-20 words each, describing a SPECIFIC action the child would take.\n"
+        "    One option must be the TEMPTING / easy / selfish choice, the other the VIRTUOUS choice that "
+        f"embodies the moral theme ({moral_theme}). Both must be believable for a child.\n"
         "    GOOD: A: 'Keep the wallet and spend the coins on sweets for himself'\n"
         "          B: 'Return the wallet to find who it belongs to'\n"
         "    BAD:  A: 'Keep it'   B: 'Return it'  (too short — not enough for the story UI)\n"
+        "  - Scene 4 (consequence) must follow the VIRTUOUS path of the scene-3 decision.\n"
         "  - Scene 6 must ONLY resolve the story and state the moral — never introduce new events.\n"
         "  - image_prompt must be an empty string \"\" — it is generated separately.\n"
         f"  - Make the story age-appropriate for a {child_age}-year-old and rich in detail.\n"
-        f"  - Use {child_name}'s name naturally in every scene's first sentence — they are always the subject.\n"
+        f"  - {child_name} is the subject of every scene. Use their name in the first sentence, then pronouns "
+        "within the same scene to avoid robotic repetition.\n"
+        f"  - title: ≤6 words, evocative, and include {child_name}'s name (e.g. \"{child_name}'s Brave Morning\").\n"
         "  - Scene 1 must show the character actively doing something specific from the very first sentence — never open with 'Once upon a time there was...' alone.\n"
         "  - Every scene must be in a DIFFERENT location or show a clear visual change from the previous scene — no two consecutive scenes in identical settings.\n"
         f"  - protagonist_gender: REQUIRED. Must be \"boy\" or \"girl\" and MUST match the pronouns you use for {child_name} in the story (if you write \"she/her\", it is \"girl\").\n"
@@ -1055,9 +1128,25 @@ def _generate_story_with_llm(
         "  - tts_prompt: For EACH scene, a list of spoken lines for text-to-speech. Rules:\n"
         "    ALWAYS start with narrator line that speaks the scene text. Add 1-2 character dialogue lines if characters speak.\n"
         "    Each text MUST be under 15 words. No punctuation in text field — plain spoken words only.\n"
-        "    Available roles: narrator, boy_hero, girl, old_man, villain, wise_woman, young_child, comic_relief, tough_guy, gentle_soul\n"
+        "    Available roles (use ONLY these): narrator, boy_hero, girl, old_man, villain, wise_woman, young_child, comic_relief, tough_guy, gentle_soul\n"
+        "    The PROTAGONIST's own dialogue must use the role matching protagonist_gender: girl → \"girl\", boy → \"boy_hero\".\n"
         "    Example: [{\"role\": \"narrator\", \"text\": \"Ali found a lost wallet on the dusty road\"}, "
-        "{\"role\": \"boy_hero\", \"text\": \"I must find who this belongs to\"}]"
+        "{\"role\": \"boy_hero\", \"text\": \"I must find who this belongs to\"}]\n"
+        "  - supporting_characters: REQUIRED list (may be empty []). For EVERY non-protagonist character who "
+        "appears in 2 or more scenes (e.g. a friend, a bully, an old man), add one entry with their `name` and a "
+        "`visual` (one line: age group, gender, hair, clothing with colours, defining feature). "
+        "This locked description is reused in every scene they appear in so they look identical throughout. "
+        "Example: [{\"name\": \"Sara\", \"visual\": \"a 9-year-old girl with two black braids, a green frock and white sandals\"}]\n\n"
+        "EXAMPLE (shape only — follow this structure exactly; abbreviated to 2 of the 6 scenes):\n"
+        "{\n"
+        '  "title": "Ali\'s Honest Choice", "avatar_used": false, "protagonist_gender": "boy",\n'
+        '  "character_visual": "7-year-old Pakistani boy, light brown skin, short black hair, big brown eyes, blue kurta and white shalwar, brown sandals",\n'
+        '  "supporting_characters": [{"name": "the shopkeeper", "visual": "a stout middle-aged man with a grey beard, white cap and brown apron"}],\n'
+        '  "scenes": [\n'
+        '    {"id": 1, "text": "Ali walked to the busy market, clutching a few coins to buy fruit for his mother.", "image_prompt": "", "decision": null, "tts_prompt": [{"role": "narrator", "text": "Ali walked to the busy market clutching his coins"}]},\n'
+        '    {"id": 3, "text": "Ali saw a dropped wallet on the ground. He picked it up and looked around.", "image_prompt": "", "decision": {"A": "Keep the wallet and buy sweets for himself", "B": "Take the wallet to the shopkeeper to find its owner"}, "tts_prompt": [{"role": "narrator", "text": "Ali found a wallet lying on the ground"}, {"role": "boy_hero", "text": "Who could have dropped this"}]}\n'
+        "  ]\n"
+        "}"
     )
 
     _variation_settings = [
@@ -1078,7 +1167,32 @@ def _generate_story_with_llm(
 
     content_p1 = _call_llm_with_retry(provider, system_p1, user_p1)
     data = _json.loads(_clean_json(content_p1))
-    data["avatar_used"] = bool(input_data.get("avatar_path"))
+
+    # Structural validation + single repair retry — catches missing decisions, wrong scene
+    # count, missing gender/character_visual, over-long stories before they reach the user.
+    _has_avatar = bool(input_data.get("avatar_path"))
+    _errs = _validate_story_structure(data, has_avatar=_has_avatar)
+    if _errs:
+        logger.warning("Pass-1 structure invalid, retrying once: %s", "; ".join(_errs))
+        _repair_msg = (
+            user_p1
+            + "\n\nYour previous response violated these requirements:\n- "
+            + "\n- ".join(_errs)
+            + "\nReturn corrected JSON that fixes ALL of them."
+        )
+        try:
+            content_p1 = _call_llm_with_retry(provider, system_p1, _repair_msg)
+            _repaired = _json.loads(_clean_json(content_p1))
+            if not _validate_story_structure(_repaired, has_avatar=_has_avatar):
+                data = _repaired
+                logger.info("Pass-1 repair retry produced a valid story")
+            else:
+                logger.warning("Pass-1 repair retry still invalid — proceeding with best effort")
+                data = _repaired
+        except Exception as _rex:
+            logger.warning("Pass-1 repair retry failed (%s) — keeping original", _rex)
+
+    data["avatar_used"] = _has_avatar
 
     # Use LLM-generated character_visual as anchor when no avatar is provided.
     # Avatar stories keep the vision-analysis anchor (more accurate than LLM imagination).
@@ -1099,7 +1213,10 @@ def _generate_story_with_llm(
 
     # PASS 2 — image prompts derived directly from each scene text
     scenes = data.get("scenes", [])
-    image_prompts = _generate_image_prompts_for_scenes(scenes, character_anchor, child_name, provider)
+    _supporting = data.get("supporting_characters") or []
+    image_prompts = _generate_image_prompts_for_scenes(
+        scenes, character_anchor, child_name, provider, supporting_characters=_supporting
+    )
     for i, scene in enumerate(scenes):
         if isinstance(scene, dict) and i < len(image_prompts):
             scene["image_prompt"] = image_prompts[i]
@@ -1260,7 +1377,10 @@ def regenerate_story_after_decision(
             data["character_anchor"] = character_anchor
 
             new_scenes = data.get("scenes", [])
-            image_prompts = _generate_image_prompts_for_scenes(new_scenes, character_anchor, child_name, attempt_provider)
+            _supporting = existing_story.get("supporting_characters") or data.get("supporting_characters") or []
+            image_prompts = _generate_image_prompts_for_scenes(
+                new_scenes, character_anchor, child_name, attempt_provider, supporting_characters=_supporting
+            )
             for i, scene in enumerate(new_scenes):
                 if isinstance(scene, dict) and i < len(image_prompts):
                     scene["image_prompt"] = image_prompts[i]
