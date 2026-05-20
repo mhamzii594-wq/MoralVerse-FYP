@@ -187,16 +187,29 @@ def _ltx_modal(image_path: str, output_path: str, prompt: str, duration: float =
     with open(image_path, "rb") as f:
         image_b64 = base64.b64encode(f.read()).decode()
 
-    # LTX runs at 24fps. Cap at 241 frames (~10s).
-    num_frames = min(241, max(49, int(duration * 24)))
+    # LTX runs at 24fps and requires (num_frames - 1) % 8 == 0. Clip length follows the
+    # scene narration, clamped to 49..193 frames (~2-8s) — LTX loses coherence on longer clips.
+    fps = 24
+    raw = max(49, min(193, int(round(duration * fps))))
+    num_frames = ((raw - 1) // 8) * 8 + 1
 
-    logger.info("img2video [LTX Modal]: %d frames (%.1fs) posting to %s", num_frames, duration, endpoint)
+    logger.info("img2video [LTX Modal]: %d frames (%.1fs @ %dfps) posting to %s", num_frames, duration, fps, endpoint)
     resp = requests.post(
         endpoint,
         json={
             "image": image_b64,
             "prompt": prompt[:500],
             "num_frames": num_frames,
+            "fps": fps,
+            "height": 768,
+            "width": 1024,
+            "num_inference_steps": 40,
+            "guidance_scale": 3.5,
+            "negative_prompt": (
+                "flat 2D, anime, cel-shaded, hand-drawn, sketch, low resolution, "
+                "warped face, extra limbs, morphing, worst quality, inconsistent motion, "
+                "blurry, jittery, distorted"
+            ),
             "seed": random.randint(0, 2**32 - 1),  # unique per scene
         },
         timeout=480,

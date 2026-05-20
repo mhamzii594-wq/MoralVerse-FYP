@@ -65,11 +65,15 @@ class LTXModel:
         self,
         image_b64: str,
         prompt: str = "gentle cinematic motion, smooth camera, vivid colors",
-        negative_prompt: str = "worst quality, inconsistent motion, blurry, jittery, distorted",
-        num_frames: int = 241,   # ~10 seconds at 24 fps
+        negative_prompt: str = (
+            "flat 2D, anime, cel-shaded, hand-drawn, sketch, low resolution, "
+            "warped face, extra limbs, morphing, worst quality, inconsistent motion, "
+            "blurry, jittery, distorted"
+        ),
+        num_frames: int = 121,   # ~5 seconds at 24 fps
         fps: int = 24,
-        height: int = 480,
-        width: int = 704,
+        height: int = 768,       # match 1024x768 source images (crisp, no distortion)
+        width: int = 1024,
         num_inference_steps: int = 40,
         guidance_scale: float = 3.5,
         seed: int = 42,
@@ -114,27 +118,33 @@ class LTXModel:
 def generate_i2v(item: dict) -> dict:
     """
     POST body (JSON):
-        image           - base64-encoded PNG/JPG (required)
-        prompt          - scene motion description (optional)
-        negative_prompt - what to avoid (optional)
-        num_frames      - default 97 (~4s at 24fps)
-        seed            - default 42
+        image               - base64-encoded PNG/JPG (required)
+        prompt              - scene motion description (optional)
+        negative_prompt     - what to avoid (optional)
+        num_frames          - default 121 (~5s at 24fps)
+        fps                 - default 24
+        height / width      - default 768 x 1024 (optional override)
+        num_inference_steps - default 40 (optional override)
+        guidance_scale      - default 3.5 (optional override)
+        seed                - default 42
 
     Response (JSON):
-        video           - base64-encoded mp4 bytes
+        video               - base64-encoded mp4 bytes
     """
-    video_bytes = LTXModel().generate.remote(
+    kwargs = dict(
         image_b64=item["image"],
         prompt=item.get(
             "prompt",
             "gentle cinematic motion, smooth camera, vivid colors"
         ),
-        negative_prompt=item.get(
-            "negative_prompt",
-            "worst quality, inconsistent motion, blurry, jittery, distorted",
-        ),
-        num_frames=item.get("num_frames", 241),
+        num_frames=item.get("num_frames", 121),
         fps=item.get("fps", 24),
         seed=item.get("seed", 42),
     )
+    # Optional overrides — only pass when present so generate() defaults apply otherwise.
+    for key in ("negative_prompt", "height", "width", "num_inference_steps", "guidance_scale"):
+        if item.get(key) is not None:
+            kwargs[key] = item[key]
+
+    video_bytes = LTXModel().generate.remote(**kwargs)
     return {"video": base64.b64encode(video_bytes).decode()}
