@@ -174,10 +174,9 @@ def _build_character_anchor(child_name: str, child_age: int, avatar_desc: str) -
     desc = (avatar_desc or "").strip().rstrip(".")
     is_fallback = not desc or desc.lower() in {"a friendly child", "friendly child", ""}
 
-    # Compact suffix — chibi proportions prevent adult/tall generation.
-    # "same character throughout" is removed here; the style tag already ends every
-    # prompt with it. Keeping it in the anchor too wastes ~9 tokens FLUX needs for scene.
-    _chibi = "chibi proportions, large anime eyes"
+    # Pixar 3D suffix — keeps proportions cartoon-rounded (not realistic) while
+    # signalling 3D volume to FLUX, matching the _STYLE_TAG's Pixar CGI request.
+    _pixar3d = "Pixar-style rounded face, large expressive eyes, soft 3D volume, smooth CGI proportions"
 
     if is_fallback:
         _GIRL_NAMES = {
@@ -197,7 +196,7 @@ def _build_character_anchor(child_name: str, child_age: int, avatar_desc: str) -
 
         return (
             f"a {age}-year-old {gender} with short black hair, dark brown eyes, "
-            f"{outfit}, {_chibi}"
+            f"{outfit}, {_pixar3d}"
         )
 
     # Vision description available — strip any leading prose first
@@ -226,7 +225,7 @@ def _build_character_anchor(child_name: str, child_age: int, avatar_desc: str) -
         name_lower = (child_name or "").lower().strip().split()[0]
         gender = "girl" if name_lower in _GIRL_NAMES_SET else "boy"
 
-    return f"a {age}-year-old {gender} with {desc}, {_chibi}"
+    return f"a {age}-year-old {gender} with {desc}, {_pixar3d}"
 
 
 # ---------------------------------------------------------------------------
@@ -515,15 +514,13 @@ def _generate_image_prompts_for_scenes(
 # ---------------------------------------------------------------------------
 
 _STYLE_TAG = (
-    "3D rendered Pixar animation style, subsurface skin scattering, "
-    "soft volumetric rim lighting, cinematic depth of field, "
-    "Disney-Pixar CGI movie still frame, rich saturated jewel-toned colors, "
-    "smooth studio quality render, expressive cartoon proportions, "
-    "main character centered in frame occupying 60% of frame height, full body head to toe visible, "
-    "child-sized compared to surroundings, "
-    "the described child is the main character, secondary characters visible when present, "
-    "same character consistent appearance throughout, "
-    "highly detailed, professional animation studio quality."
+    "Disney-Pixar CGI animated film, Pixar-quality 3D render, "
+    "subsurface skin scattering, soft volumetric rim lighting, "
+    "cinematic depth of field with bokeh background, "
+    "rich saturated jewel-toned colors, smooth studio quality render, "
+    "expressive Pixar cartoon face, full body visible head to toe, "
+    "main character centered in frame, professional animation studio quality, "
+    "ultra-detailed 3D surface textures, no flat shading, no cel-shading."
 )
 
 # Pass 3 constants — defined at module level for consistency and reuse
@@ -1073,7 +1070,7 @@ def _generate_story_with_llm(
     # Avatar stories keep the vision-analysis anchor (more accurate than LLM imagination).
     character_visual = data.pop("character_visual", None)
     if character_visual and not input_data.get("avatar_path"):
-        character_anchor = f"{character_visual.rstrip('. ')}, chibi proportions, large anime eyes"
+        character_anchor = f"{character_visual.rstrip('. ')}, Pixar-style rounded face, large expressive eyes, soft 3D volume, smooth CGI proportions"
         logger.info("Character anchor updated from LLM character_visual (%d chars)", len(character_anchor))
 
     data["character_anchor"] = character_anchor

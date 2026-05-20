@@ -164,7 +164,9 @@ def _generate_modelslab(prompt: str, options: Dict[str, Any]) -> str:
 
         _kontext_base_neg = (
             "photorealistic, realistic photograph, realistic skin texture, real person, "
-            "photography, 3d render, CGI, blurry, low quality, distorted, bad anatomy, ugly, "
+            "photography, blurry, low quality, distorted, bad anatomy, ugly, "
+            "flat 2D, anime style, manga, cel-shaded, hand-drawn illustration, "
+            "flat colors, 2D cartoon, flat shading, anime proportions, "
             "totoro, spirited away characters, no-face, calcifer, howl, ghibli mascots, "
             "anime mascots, copyright characters, brand mascots, "
             "adult, man, woman, grown-up, teenager, elderly, adult face, mature features, "
@@ -199,6 +201,8 @@ def _generate_modelslab(prompt: str, options: Dict[str, Any]) -> str:
     else:
         _base_neg = (
             "photorealistic, realistic photograph, blurry, low quality, distorted, bad anatomy, ugly, "
+            "flat 2D, anime style, manga, cel-shaded, hand-drawn illustration, "
+            "flat colors, 2D cartoon, flat shading, anime proportions, "
             "totoro, spirited away characters, no-face, calcifer, howl, ghibli mascots, "
             "anime mascots, copyright characters, brand mascots, "
             "adult, man, woman, grown-up, teenager, elderly, adult face, mature features, "

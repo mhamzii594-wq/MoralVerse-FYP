@@ -1443,3 +1443,184 @@ h1, h2, h3, h4, h5, h6 {
 .page-exit { animation: pageExit 0.28s ease-in forwards; }
 @keyframes pageExit { from { opacity:1; transform: none; } to { opacity:0; transform: translateY(-12px); } }
 
+/* ── 37. Immersive Story Generation Modal ────────────────────────── */
+
+.gm-immersive {
+  background: linear-gradient(145deg, #0f0c29, #302b63, #24243e);
+  color: white;
+  overflow: hidden;
+  position: relative;
+  text-align: center;
+}
+.gm-immersive .gm-headline { font-size: 1.45rem; font-weight: 800; color: white; margin-bottom: .25rem; }
+.gm-immersive .gm-subline  { color: rgba(255,255,255,0.60); font-size: .85rem; margin-bottom: 1rem; }
+
+/* Floating particles */
+.gm-particles { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 0; }
+.gmp {
+  position: absolute;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.25);
+  animation: gmp-float 6s infinite ease-in-out;
+}
+.gmp:nth-child(1)  { left: 10%; top: 20%; animation-delay: 0s;    animation-duration: 7s; }
+.gmp:nth-child(2)  { left: 25%; top: 60%; animation-delay: 1.2s;  animation-duration: 5s; }
+.gmp:nth-child(3)  { left: 45%; top: 15%; animation-delay: 0.4s;  animation-duration: 8s; }
+.gmp:nth-child(4)  { left: 60%; top: 70%; animation-delay: 2s;    animation-duration: 6s; }
+.gmp:nth-child(5)  { left: 75%; top: 30%; animation-delay: 0.8s;  animation-duration: 7.5s; }
+.gmp:nth-child(6)  { left: 85%; top: 55%; animation-delay: 1.5s;  animation-duration: 5.5s; }
+.gmp:nth-child(7)  { left: 15%; top: 80%; animation-delay: 3s;    animation-duration: 6s; }
+.gmp:nth-child(8)  { left: 55%; top: 45%; animation-delay: 0.2s;  animation-duration: 9s; }
+.gmp:nth-child(9)  { left: 35%; top: 35%; animation-delay: 2.4s;  animation-duration: 6.5s; }
+.gmp:nth-child(10) { left: 90%; top: 80%; animation-delay: 1.8s;  animation-duration: 7s; }
+@keyframes gmp-float {
+  0%,100% { transform: translateY(0) scale(1); opacity: .3; }
+  50%      { transform: translateY(-28px) scale(1.4); opacity: .7; }
+}
+
+/* Central book animation */
+.gm-hero-anim { margin-bottom: 1.25rem; position: relative; display: inline-block; z-index: 1; }
+.gm-book-wrap { position: relative; display: inline-block; }
+.gm-book { font-size: 4rem; display: block; animation: gm-book-float 2.5s ease-in-out infinite; }
+@keyframes gm-book-float {
+  0%,100% { transform: translateY(0) rotate(-3deg); }
+  50%      { transform: translateY(-12px) rotate(3deg); }
+}
+.gm-sparkle {
+  position: absolute;
+  font-size: 1.2rem;
+  animation: gm-sparkle-spin 3s ease-in-out infinite;
+}
+.gm-sparkle.s1 { top: -8px;  left: -16px; animation-delay: 0s; }
+.gm-sparkle.s2 { top: -12px; right: -16px; animation-delay: 1s; }
+.gm-sparkle.s3 { bottom: 0;  left: 50%;   animation-delay: 0.5s; }
+@keyframes gm-sparkle-spin {
+  0%,100% { transform: scale(1) rotate(0deg);   opacity: .8; }
+  50%      { transform: scale(1.5) rotate(180deg); opacity: 1; }
+}
+
+/* Rotating status message */
+.gm-status-msg {
+  color: rgba(255,255,255,0.80);
+  font-size: .9rem;
+  min-height: 1.4em;
+  transition: opacity .28s ease;
+  margin-bottom: .75rem;
+  position: relative; z-index: 1;
+}
+
+/* Bouncing dots */
+.gm-dots { display: flex; justify-content: center; gap: 8px; margin-bottom: 1.5rem; position: relative; z-index: 1; }
+.gmd {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: rgba(255,255,255,0.6);
+  animation: gmd-bounce .9s ease-in-out infinite;
+}
+.gmd:nth-child(2) { animation-delay: .15s; }
+.gmd:nth-child(3) { animation-delay: .30s; }
+@keyframes gmd-bounce {
+  0%,80%,100% { transform: translateY(0); opacity: .5; }
+  40%          { transform: translateY(-10px); opacity: 1; }
+}
+
+/* Compact horizontal stage pills */
+.gm-stages {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 1.25rem;
+  position: relative; z-index: 1;
+  flex-wrap: wrap;
+}
+.gm-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.07);
+  color: rgba(255,255,255,0.45);
+  font-size: .74rem;
+  font-weight: 600;
+  position: relative;
+  transition: all .35s ease;
+  min-width: 72px;
+}
+.gm-stage i { font-size: 1.1rem; }
+.gm-stage.active {
+  border-color: var(--primary-light);
+  background: rgba(99,102,241,0.25);
+  color: white;
+  box-shadow: 0 0 18px rgba(99,102,241,0.45);
+}
+.gm-stage.done {
+  border-color: rgba(16,185,129,0.6);
+  background: rgba(16,185,129,0.15);
+  color: rgba(255,255,255,0.75);
+}
+.gm-stage-pulse {
+  position: absolute;
+  inset: -3px;
+  border-radius: 16px;
+  border: 2px solid var(--primary-light);
+  animation: gm-pulse-ring 1.4s ease-out infinite;
+  pointer-events: none;
+  display: none;
+}
+@keyframes gm-pulse-ring {
+  0%   { transform: scale(1); opacity: .8; }
+  100% { transform: scale(1.18); opacity: 0; }
+}
+.gm-stage-arrow { color: rgba(255,255,255,0.30); font-size: .9rem; }
+.gm-footer {
+  color: rgba(255,255,255,0.40);
+  font-size: .78rem;
+  margin-top: .25rem;
+  margin-bottom: 0;
+  position: relative; z-index: 1;
+}
+.gm-headline, .gm-subline { position: relative; z-index: 1; }
+
+/* ── 38. Video Gen Modal — Stage Icon Animations ─────────────────── */
+
+.gen-stage.active .gsi-palette i { animation: gsi-spin 2s linear infinite; }
+@keyframes gsi-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+.gen-stage.active .gsi-wave i { animation: gsi-wave-bounce .6s ease-in-out infinite alternate; }
+@keyframes gsi-wave-bounce { from { transform: scaleY(1); } to { transform: scaleY(1.4); } }
+
+.gen-stage.active .gsi-film i { animation: gsi-film-blink .8s steps(1) infinite; }
+@keyframes gsi-film-blink { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+
+/* Shimmer progress bar */
+.progress-pro .progress-bar {
+  background: linear-gradient(90deg, var(--primary) 0%, var(--secondary) 50%, var(--primary) 100%);
+  background-size: 200% 100%;
+  animation: progress-shimmer 1.8s linear infinite;
+}
+@keyframes progress-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── 39. Landing Hero — Animated Gradient Mesh ───────────────────── */
+
+.lh-mesh-anim {
+  background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #764BA2 100%);
+  background-size: 300% 300%;
+  animation: mesh-shift 10s ease infinite;
+}
+@keyframes mesh-shift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* ── 40. Feature Cards 3D tilt & tip text fade ───────────────────── */
+.card-pro { transition: transform .15s ease, box-shadow .15s ease; }
+.gen-tip-text { transition: opacity .28s ease; }
+

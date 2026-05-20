@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <title>MoralVerse.AI - AI-Powered Storytelling Platform</title>
-  <meta name="description" content="Create personalized AI-powered children's stories with Ghibli art, bilingual narration, and interactive decisions." />
+  <meta name="description" content="Create personalized AI-powered children's stories with Pixar-style 3D art, bilingual narration, and interactive decisions." />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -116,7 +116,7 @@
   </nav>
 
   <!-- Hero -->
-  <section class="landing-hero">
+  <section class="landing-hero lh-mesh-anim">
     <div class="container position-relative" style="z-index:2;">
       <div class="row align-items-center g-5">
         <div class="col-lg-6">
@@ -127,7 +127,7 @@
             Create Magical Stories<br>for <span class="hero-typewriter" id="hero-typewriter">Your Child</span>
           </h1>
           <p class="hero-subtitle-pro mb-5" data-reveal data-reveal-delay="3">
-            Transform a child's photo into a personalized Ghibli-style animated story — with AI-generated art, bilingual narration, and interactive moral choices.
+            Transform a child's photo into a personalised Pixar-style 3D animated story — with AI-generated art, bilingual narration, and interactive moral choices.
           </p>
           <div class="d-flex gap-3 flex-wrap" data-reveal data-reveal-delay="4">
             <a href="{% url 'signup' %}" class="btn btn-pro btn-pro--lg" id="hero-cta-btn">
@@ -138,7 +138,7 @@
             </a>
           </div>
           <div class="d-flex gap-3 mt-4 flex-wrap" data-reveal data-reveal-delay="5">
-            <span class="badge-pro" style="background:rgba(255,255,255,0.15);color:white;border-color:rgba(255,255,255,0.25);"><i class="bi bi-palette-fill me-1"></i>Ghibli Art</span>
+            <span class="badge-pro" style="background:rgba(255,255,255,0.15);color:white;border-color:rgba(255,255,255,0.25);"><i class="bi bi-stars me-1"></i>Pixar-Style 3D</span>
             <span class="badge-pro" style="background:rgba(255,255,255,0.15);color:white;border-color:rgba(255,255,255,0.25);"><i class="bi bi-translate me-1"></i>Urdu & English</span>
             <span class="badge-pro" style="background:rgba(255,255,255,0.15);color:white;border-color:rgba(255,255,255,0.25);"><i class="bi bi-diagram-3 me-1"></i>Interactive</span>
             <span class="badge-pro" style="background:rgba(255,255,255,0.15);color:white;border-color:rgba(255,255,255,0.25);"><i class="bi bi-camera-video-fill me-1"></i>Full Video</span>
@@ -204,7 +204,7 @@
           <div class="hiw-number">2</div>
           <div class="hiw-connector d-none d-md-block"><div class="hiw-connector-fill" id="conn-2"></div></div>
           <h5 class="fw-bold mb-2">AI Creates Everything</h5>
-          <p class="text-muted-pro text-small">Our AI writes a 6-scene story, paints Ghibli art, records narration, and builds interactive choices.</p>
+          <p class="text-muted-pro text-small">Our AI writes a 6-scene story, generates Pixar-style 3D illustrations, records narration, and builds interactive choices.</p>
         </div>
         <div class="col-md-4 hiw-step" data-reveal data-reveal-delay="5">
           <div class="hiw-number">3</div>
@@ -237,8 +237,8 @@
             <div class="feature-icon-wrap" style="background:rgba(236,72,153,0.12);color:var(--secondary);">
               <i class="bi bi-palette-fill"></i>
             </div>
-            <h4 class="mb-3">Ghibli-Style Art</h4>
-            <p class="text-muted-pro">Transform your child's photo into a beautiful Ghibli anime avatar, then use it consistently across all 6 scenes.</p>
+            <h4 class="mb-3">Pixar-Style 3D Art</h4>
+            <p class="text-muted-pro">Transform your child's photo into a beautiful Pixar-style 3D character, used consistently across all 6 scenes.</p>
           </div>
         </div>
         <div class="col-md-4" data-reveal data-reveal-delay="3">
@@ -274,7 +274,7 @@
               <i class="bi bi-webcam-fill"></i>
             </div>
             <h4 class="mb-3">Webcam Avatar</h4>
-            <p class="text-muted-pro">Capture a photo directly in the browser. Our AI instantly converts it to a Ghibli-style character avatar.</p>
+            <p class="text-muted-pro">Capture a photo directly in the browser. Our AI instantly converts it to a Pixar-style 3D character avatar.</p>
           </div>
         </div>
       </div>
@@ -435,6 +435,17 @@
       document.body.classList.add('page-exit');
       setTimeout(() => { window.location.href = href; }, 280);
     });
+  });
+
+  // ── 3D tilt on feature cards ──────────────────────────────────────────────
+  document.querySelectorAll('.card-pro').forEach(card => {
+    card.addEventListener('mousemove', e => {
+      const r = card.getBoundingClientRect();
+      const x = ((e.clientX - r.left) / r.width  - 0.5) * 12;
+      const y = ((e.clientY - r.top)  / r.height - 0.5) * -12;
+      card.style.transform = `perspective(800px) rotateX(${y}deg) rotateY(${x}deg) translateY(-6px)`;
+    });
+    card.addEventListener('mouseleave', () => { card.style.transform = ''; });
   });
   </script>
 </body>

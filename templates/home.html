@@ -367,30 +367,47 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
-  <!-- Generation Modal -->
+  <!-- Generation Modal — Immersive Loading Experience -->
   <div id="story-gen-modal" class="gen-modal-overlay hidden">
-    <div class="gen-modal-box">
-      <div class="gen-lottie-wrap">✨</div>
-      <h4 class="fw-bold mb-1 text-center">Creating Your Story</h4>
-      <p class="text-muted text-center text-small mb-4">Please wait — the AI is working its magic…</p>
-      <div>
-        <div class="gen-stage active" id="sg-llm">
-          <div class="gen-stage-icon"><i class="bi bi-pencil-fill"></i></div>
-          <div class="gen-stage-info"><div class="gen-stage-title">Writing Story</div><div class="gen-stage-sub">LLM is drafting your 6-scene story</div></div>
-          <div class="gen-stage-status">In progress…</div>
-        </div>
-        <div class="gen-stage" id="sg-images">
-          <div class="gen-stage-icon"><i class="bi bi-palette-fill"></i></div>
-          <div class="gen-stage-info"><div class="gen-stage-title">Painting Scenes</div><div class="gen-stage-sub">Generating Ghibli artwork for each scene</div></div>
-          <div class="gen-stage-status">Waiting…</div>
-        </div>
-        <div class="gen-stage" id="sg-audio">
-          <div class="gen-stage-icon"><i class="bi bi-volume-up-fill"></i></div>
-          <div class="gen-stage-info"><div class="gen-stage-title">Recording Narration</div><div class="gen-stage-sub">TTS audio for all scenes</div></div>
-          <div class="gen-stage-status">Waiting…</div>
+    <div class="gm-particles" aria-hidden="true">
+      <span class="gmp"></span><span class="gmp"></span><span class="gmp"></span>
+      <span class="gmp"></span><span class="gmp"></span><span class="gmp"></span>
+      <span class="gmp"></span><span class="gmp"></span><span class="gmp"></span>
+      <span class="gmp"></span>
+    </div>
+    <div class="gen-modal-box gm-immersive">
+      <div class="gm-hero-anim">
+        <div class="gm-book-wrap">
+          <span class="gm-book">📖</span>
+          <span class="gm-sparkle s1">✨</span>
+          <span class="gm-sparkle s2">⭐</span>
+          <span class="gm-sparkle s3">✨</span>
         </div>
       </div>
-      <p class="text-muted text-center text-small mt-4 mb-0">You will be redirected to the story preview automatically.</p>
+      <h4 class="gm-headline">Creating <span id="gm-child-name">Your Child</span>'s Story</h4>
+      <p class="gm-subline">The AI is weaving something magical…</p>
+      <p class="gm-status-msg" id="gm-rotating-msg">Writing your 6-scene story…</p>
+      <div class="gm-dots" aria-hidden="true">
+        <span class="gmd"></span><span class="gmd"></span><span class="gmd"></span>
+      </div>
+      <div class="gm-stages">
+        <div class="gm-stage active" id="sg-llm">
+          <i class="bi bi-pencil-fill"></i>
+          <span>Writing</span>
+          <div class="gm-stage-pulse"></div>
+        </div>
+        <div class="gm-stage-arrow">→</div>
+        <div class="gm-stage" id="sg-images">
+          <i class="bi bi-palette-fill"></i>
+          <span>Painting</span>
+        </div>
+        <div class="gm-stage-arrow">→</div>
+        <div class="gm-stage" id="sg-audio">
+          <i class="bi bi-volume-up-fill"></i>
+          <span>Narrating</span>
+        </div>
+      </div>
+      <p class="gm-footer">You'll be redirected automatically when ready.</p>
     </div>
   </div>
   <div class="theme-switcher">
@@ -596,27 +613,52 @@
       return cookieValue;
     }
 
-    // Form submission — show generation modal
-    const STAGE_IDS_HOME = ['sg-llm','sg-images','sg-audio'];
-    document.getElementById('story-form')?.addEventListener('submit', function() {
+    // Form submission — immersive generation modal
+    const GEN_MESSAGES = [
+      'Writing your 6-scene story…',
+      'Crafting the moral lesson…',
+      'Choosing vivid scene details…',
+      'Painting Pixar-style illustrations…',
+      'Bringing the characters to life…',
+      'Recording the narration…',
+      'Adding the finishing touches…',
+      'Almost there — magic takes time ✨',
+    ];
+    let _genMsgIdx = 0, _genMsgTimer = null;
+
+    function _startRotatingMsg() {
+      const el = document.getElementById('gm-rotating-msg');
+      _genMsgTimer = setInterval(() => {
+        _genMsgIdx = (_genMsgIdx + 1) % GEN_MESSAGES.length;
+        el.style.opacity = '0';
+        setTimeout(() => { el.textContent = GEN_MESSAGES[_genMsgIdx]; el.style.opacity = '1'; }, 280);
+      }, 3200);
+    }
+
+    function _advanceHomeStage(si) {
+      ['sg-llm','sg-images','sg-audio'].forEach((id, i) => {
+        const el = document.getElementById(id); if (!el) return;
+        el.className = 'gm-stage' + (i < si ? ' done' : i === si ? ' active' : '');
+        const pulse = el.querySelector('.gm-stage-pulse');
+        if (pulse) pulse.style.display = (i === si) ? 'block' : 'none';
+      });
+    }
+
+    document.getElementById('story-form')?.addEventListener('submit', function () {
       const btn = document.getElementById('generate-btn');
-      btn.innerHTML = '<span class="btn-spinner"></span> Creating…';
-      btn.disabled = true;
-      // Show full-screen generation modal
+      if (btn) { btn.innerHTML = '<span class="btn-spinner"></span> Creating…'; btn.disabled = true; }
+      const childName = (document.getElementById('id_child_name')?.value || '').trim();
+      const nameSpan = document.getElementById('gm-child-name');
+      if (nameSpan && childName) nameSpan.textContent = childName + "’s";
       const modal = document.getElementById('story-gen-modal');
       if (modal) modal.classList.add('show');
-      // Advance stages visually for feedback
+      _advanceHomeStage(0);
+      _startRotatingMsg();
       let si = 0;
-      function nextStage() {
-        STAGE_IDS_HOME.forEach((id, i) => {
-          const el = document.getElementById(id); if (!el) return;
-          if (i < si) { el.className = 'gen-stage done'; el.querySelector('.gen-stage-status').textContent = '✓ Done'; }
-          else if (i === si) { el.className = 'gen-stage active'; el.querySelector('.gen-stage-status').textContent = 'In progress…'; }
-          else { el.className = 'gen-stage'; }
-        });
-        if (si < STAGE_IDS_HOME.length - 1) { si++; setTimeout(nextStage, 18000); }
+      function _next() {
+        if (si < 2) { si++; _advanceHomeStage(si); setTimeout(_next, si === 1 ? 18000 : 20000); }
       }
-      setTimeout(nextStage, 12000);
+      setTimeout(_next, 12000);
     });
 
     // Navbar glass on scroll

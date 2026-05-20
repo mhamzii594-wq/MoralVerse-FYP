@@ -122,7 +122,7 @@
                style="width:60px;height:60px;border-radius:50%;object-fit:cover;border:3px solid var(--primary);box-shadow:var(--shadow);">
           <div>
             <div class="fw-bold">{{ story_request.child_name }}'s Avatar</div>
-            <div class="text-small text-muted">Ghibli-style character used across all scenes</div>
+            <div class="text-small text-muted">Pixar-style 3D character used across all scenes</div>
           </div>
         </div>
         {% endif %}
@@ -252,18 +252,18 @@
   <div class="gen-modal-box">
     <div class="gen-lottie-wrap">🎬</div>
     <h4 class="fw-bold mb-1 text-center">Generating Your Video</h4>
-    <p class="text-muted text-center text-small mb-4">This takes 2–5 minutes. Please keep this tab open.</p>
+    <p class="text-muted text-center text-small mb-3">This takes 2–5 minutes. Please keep this tab open.</p>
     <div>
       <div class="gen-stage active" id="gs-images">
-        <div class="gen-stage-icon"><i class="bi bi-palette-fill"></i></div>
+        <div class="gen-stage-icon gsi-palette"><i class="bi bi-palette-fill"></i></div>
         <div class="gen-stage-info">
           <div class="gen-stage-title">Scene Images</div>
-          <div class="gen-stage-sub">Generating Ghibli artwork for all scenes</div>
+          <div class="gen-stage-sub">Generating Pixar-style artwork for all scenes</div>
         </div>
         <div class="gen-stage-status">In progress…</div>
       </div>
       <div class="gen-stage" id="gs-audio">
-        <div class="gen-stage-icon"><i class="bi bi-volume-up-fill"></i></div>
+        <div class="gen-stage-icon gsi-wave"><i class="bi bi-volume-up-fill"></i></div>
         <div class="gen-stage-info">
           <div class="gen-stage-title">Voice Narration</div>
           <div class="gen-stage-sub">Recording TTS audio for each scene</div>
@@ -271,7 +271,7 @@
         <div class="gen-stage-status">Waiting…</div>
       </div>
       <div class="gen-stage" id="gs-subtitles">
-        <div class="gen-stage-icon"><i class="bi bi-translate"></i></div>
+        <div class="gen-stage-icon gsi-translate"><i class="bi bi-translate"></i></div>
         <div class="gen-stage-info">
           <div class="gen-stage-title">Subtitles</div>
           <div class="gen-stage-sub">Translating and creating bilingual SRT</div>
@@ -279,7 +279,7 @@
         <div class="gen-stage-status">Waiting…</div>
       </div>
       <div class="gen-stage" id="gs-video">
-        <div class="gen-stage-icon"><i class="bi bi-film"></i></div>
+        <div class="gen-stage-icon gsi-film"><i class="bi bi-film"></i></div>
         <div class="gen-stage-info">
           <div class="gen-stage-title">Video Assembly</div>
           <div class="gen-stage-sub">Combining everything into final MP4</div>
@@ -287,7 +287,9 @@
         <div class="gen-stage-status">Waiting…</div>
       </div>
     </div>
-    <p class="text-muted text-center text-small mt-4 mb-0" id="gen-modal-status">Initialising pipeline…</p>
+    <p class="text-muted text-center text-small mt-3 mb-1" id="gen-clip-counter" style="display:none;font-weight:600;color:var(--primary);"></p>
+    <p class="text-muted text-center text-small mt-1 mb-0 gen-tip-text" id="gen-tip-txt">Tip: Cinematic videos use Kling v2.1 — real AI motion, not slideshows.</p>
+    <p class="text-muted text-center text-small mt-2 mb-0" id="gen-modal-status">Initialising pipeline…</p>
   </div>
 </div>
 
@@ -491,6 +493,21 @@ function showGenModal() {
   setTimeout(() => advanceStage(), 15000);
   setTimeout(() => advanceStage(), 35000);
   setTimeout(() => advanceStage(), 55000);
+  // Rotating tips
+  const GEN_TIPS = [
+    'Cinematic videos use Kling v2.1 — real AI motion, not slideshows.',
+    'Each scene gets its own voice narration matched to the story.',
+    'Background music is automatically ducked so narration stays clear.',
+    'The AI writes 6 scenes with 2 interactive moral decision points.',
+    'Bilingual subtitles are generated in both Urdu and English.',
+  ];
+  let _tipIdx = 0;
+  setInterval(() => {
+    const el = document.getElementById('gen-tip-txt'); if (!el) return;
+    _tipIdx = (_tipIdx + 1) % GEN_TIPS.length;
+    el.style.opacity = '0';
+    setTimeout(() => { el.textContent = GEN_TIPS[_tipIdx]; el.style.opacity = '1'; }, 280);
+  }, 5000);
 }
 
 // Video type selection
@@ -522,6 +539,23 @@ function startPolling() {
     .then(data => {
       // Update progress bar for cinematic
       if (data.progress !== undefined) updateProgressBar(data.progress);
+      // Show cinematic clip counter
+      if (data.progress !== undefined && data.video_type === 'cinematic') {
+        const clipEl = document.getElementById('gen-clip-counter');
+        if (clipEl) {
+          if (data.progress > 0 && data.progress <= 50) {
+            const clip = Math.min(6, Math.ceil((data.progress / 50) * 6));
+            clipEl.textContent = 'Animating scene ' + clip + ' of 6…';
+            clipEl.style.display = 'block';
+          } else if (data.progress > 50 && data.progress <= 80) {
+            clipEl.textContent = 'Adding lipsync overlay…';
+            clipEl.style.display = 'block';
+          } else if (data.progress > 80) {
+            clipEl.textContent = 'Assembling final video…';
+            clipEl.style.display = 'block';
+          }
+        }
+      }
 
       if (data.status === 'completed') {
         clearInterval(pollTimer);
