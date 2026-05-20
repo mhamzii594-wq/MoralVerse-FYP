@@ -202,4 +202,10 @@ LOGGING = {
 # Increase max upload size for high-res photos
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10485760 # 10MB
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10485760 # 10MB
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+# Django 5.x removed STATICFILES_STORAGE — must use STORAGES. The whitenoise manifest
+# backend produces hashed filenames (e.g. professional.<hash>.css) so any CSS/JS change
+# busts the browser cache automatically, even with the long immutable cache header.
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
