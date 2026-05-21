@@ -142,35 +142,30 @@
             <div class="mb-3">
               <label class="label-pro"><i class="bi bi-cpu me-1"></i>AI Model</label>
               <select name="llm_provider" class="input-pro">
-                <option value="">Auto</option>
-                <option value="modelslab" selected>ModelsLab — Llama 3.1 70B ★</option>
-                <option value="gemini">Gemini — 2.0 Flash</option>
-                <option value="openai">OpenAI — GPT-4o Mini</option>
-                <option value="groq">Groq — Mixtral 8x7B</option>
+                <option value="" selected>Auto (best available)</option>
+                {% for p in llm_providers %}
+                <option value="{{ p.value }}"{% if not p.available %} disabled{% endif %}>{{ p.label }}{% if p.available %} ✓{% else %} — API key not set{% endif %}</option>
+                {% endfor %}
               </select>
             </div>
 
             <div class="mb-3">
               <label class="label-pro"><i class="bi bi-image me-1"></i>Image Generator</label>
               <select name="image_provider" class="input-pro">
-                <option value="">Auto</option>
-                <option value="modelslab" selected>ModelsLab — FLUX Dev (Scene Images) ★</option>
-                <option value="modelslab_ghibli">ModelsLab — Ghibli Model (Anime Style) ★</option>
-                <option value="gemini">Gemini — Imagen 2.0</option>
-                <option value="stability">Stability AI — Core</option>
-                <option value="openai">OpenAI — DALL-E 3</option>
-                <option value="pollinations">Pollinations — FLUX (Free)</option>
+                <option value="" selected>Auto (best available)</option>
+                {% for p in image_providers %}
+                <option value="{{ p.value }}"{% if not p.available %} disabled{% endif %}>{{ p.label }}{% if p.available %} ✓{% else %} — API key not set{% endif %}</option>
+                {% endfor %}
               </select>
             </div>
 
             <div class="mb-4">
               <label class="label-pro"><i class="bi bi-volume-up me-1"></i>TTS Provider</label>
               <select name="tts_provider" class="input-pro">
-                <option value="">Auto</option>
-                <option value="modelslab" selected>ModelsLab — Madison Voice ★</option>
-                <option value="gemini">Gemini — 2.0 Flash TTS</option>
-                <option value="openai">OpenAI — TTS-1 Nova</option>
-                <option value="elevenlabs">ElevenLabs — Multilingual v2</option>
+                <option value="" selected>Auto (best available)</option>
+                {% for p in tts_providers %}
+                <option value="{{ p.value }}"{% if not p.available %} disabled{% endif %}>{{ p.label }}{% if p.available %} ✓{% else %} — API key not set{% endif %}</option>
+                {% endfor %}
               </select>
             </div>
 
@@ -479,22 +474,40 @@
     const processingStatus = document.getElementById('processing-status');
 
     startBtn?.addEventListener('click', async function() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('Your browser does not support camera access. Use the Upload tab instead.');
+        return;
+      }
+      // Use "ideal" (not exact) constraints; some Windows webcam drivers throw
+      // "Could not start video source" when forced to an exact resolution.
+      const tryGet = (constraints) => navigator.mediaDevices.getUserMedia(constraints);
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: 640,
-            height: 480,
-            facingMode: 'user'
-          }
-        });
+        try {
+          stream = await tryGet({ video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' } });
+        } catch (e1) {
+          console.warn('Webcam: ideal constraints failed, retrying with defaults:', e1.name);
+          // Fallback: let the browser pick any working camera/mode.
+          stream = await tryGet({ video: true });
+        }
         video.srcObject = stream;
+        await video.play().catch(() => {});
         video.style.display = 'block';
         startBtn.style.display = 'none';
         captureBtn.style.display = 'inline-block';
         stopBtn.style.display = 'inline-block';
       } catch (err) {
-        alert('Error accessing webcam: ' + err.message);
-        console.error('Webcam error:', err);
+        console.error('Webcam error:', err.name, err.message);
+        let msg;
+        if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+          msg = 'Your camera could not start — it may be in use by another app (Zoom, Teams, Camera). Close that app and try again, or use the Upload tab.';
+        } else if (err.name === 'NotAllowedError' || err.name === 'SecurityError') {
+          msg = 'Camera permission was blocked. Allow camera access for this site in your browser settings, then try again.';
+        } else if (err.name === 'NotFoundError' || err.name === 'OverconstrainedError') {
+          msg = 'No camera was found. Connect a webcam or use the Upload tab.';
+        } else {
+          msg = 'Error accessing webcam: ' + (err.message || err.name) + '. You can use the Upload tab instead.';
+        }
+        alert(msg);
       }
     });
 

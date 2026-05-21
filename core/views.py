@@ -32,12 +32,47 @@ def landing(request: HttpRequest) -> HttpResponse:
     return render(request, "landing.html")
 
 
+def _provider_catalog() -> Dict[str, list]:
+    """Build the AI-provider option lists, flagging which have an API key configured.
+
+    `key=None` means the provider needs no key (free). Each option gets `available`.
+    """
+    def has(env_key: str) -> bool:
+        return bool(os.getenv(env_key, "").strip())
+
+    llm = [
+        {"value": "groq",      "label": "Groq — Llama 3.3 70B",     "key": "GROQ_API_KEY"},
+        {"value": "gemini",    "label": "Gemini — 2.0 Flash",       "key": "GEMINI_API_KEY"},
+        {"value": "openai",    "label": "OpenAI — GPT-4o Mini",     "key": "OPENAI_API_KEY"},
+        {"value": "modelslab", "label": "ModelsLab — Llama 3.1 70B","key": "MODELSLAB_API_KEY"},
+    ]
+    image = [
+        {"value": "modelslab",        "label": "ModelsLab — FLUX Dev (Scene Images)", "key": "MODELSLAB_API_KEY"},
+        {"value": "modelslab_ghibli", "label": "ModelsLab — Anime / Ghibli Style",    "key": "MODELSLAB_API_KEY"},
+        {"value": "gemini",           "label": "Gemini — Flash Image",                "key": "GEMINI_API_KEY"},
+        {"value": "stability",        "label": "Stability AI — Core",                 "key": "STABILITY_API_KEY"},
+        {"value": "openai",           "label": "OpenAI — DALL·E 3",                   "key": "OPENAI_API_KEY"},
+        {"value": "pollinations",     "label": "Pollinations — FLUX (Free)",          "key": None},
+    ]
+    tts = [
+        {"value": "modelslab",  "label": "ModelsLab — Madison Voice",     "key": "MODELSLAB_API_KEY"},
+        {"value": "gemini",     "label": "Gemini — 2.0 Flash TTS",        "key": "GEMINI_API_KEY"},
+        {"value": "openai",     "label": "OpenAI — TTS-1 Nova",           "key": "OPENAI_API_KEY"},
+        {"value": "elevenlabs", "label": "ElevenLabs — Multilingual v2",  "key": "ELEVENLABS_API_KEY"},
+    ]
+    for group in (llm, image, tts):
+        for opt in group:
+            opt["available"] = opt["key"] is None or has(opt["key"])
+    return {"llm_providers": llm, "image_providers": image, "tts_providers": tts}
+
+
 def home(request: HttpRequest) -> HttpResponse:
     """
     Main home page - user can create stories (login optional for creation, required for download).
     """
     context = {
         "user": request.user,
+        **_provider_catalog(),
     }
     return render(request, "home.html", context)
 
