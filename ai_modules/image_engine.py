@@ -1326,16 +1326,17 @@ def generate_scene_image(
                     i2i_opts["seed"] = seed
                 try:
                     return _generate_modelslab(prompt, i2i_opts)
-                except Exception as kontext_err:
-                    logger.warning("FLUX Kontext failed, falling back to ToonYou: %s", kontext_err)
-
-                # ── Tier 2: ToonYou + IP-Adapter Plus Face ───────────────────
-                # SD 1.5 cartoon fallback with face-identity injection from the avatar.
-                logger.info("Scene ToonYou + IP-Adapter Face (fallback): %s", avatar_path)
-                ty_opts: Dict[str, Any] = {"ip_adapter_image_url": avatar_url}
-                if seed is not None:
-                    ty_opts["seed"] = seed
-                return _generate_modelslab_toonyou(prompt, ty_opts)
+                except Exception as kontext_err1:
+                    # Retry once — most Kontext failures are transient ModelsLab 5xx/timeouts.
+                    logger.warning("FLUX Kontext failed (1/2), retrying: %s", kontext_err1)
+                    try:
+                        return _generate_modelslab(prompt, i2i_opts)
+                    except Exception as kontext_err2:
+                        # Do NOT fall back to ToonYou — its SD1.5 768x512 output has a
+                        # different style/aspect and drifts the outfit, breaking consistency.
+                        # Fall through to FLUX text2img (16:9, same Pixar style + outfit anchor).
+                        logger.warning("FLUX Kontext failed (2/2) — using FLUX text2img 16:9: %s", kontext_err2)
+                        raise
         except Exception as e:
             logger.warning("ModelsLab scene generation failed, falling back to text2img: %s", e)
 
