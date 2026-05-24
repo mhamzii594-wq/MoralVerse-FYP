@@ -1078,14 +1078,60 @@ def _validate_story_structure(data: dict, has_avatar: bool = False) -> list:
         if not (isinstance(sc, dict) and (sc.get("text") or "").strip()):
             errors.append(f"Scene {i} has empty text.")
 
-    if (data.get("protagonist_gender") or "").strip().lower() not in ("boy", "girl"):
+    gender = (data.get("protagonist_gender") or "").strip().lower()
+    if gender not in ("boy", "girl"):
         errors.append("protagonist_gender must be 'boy' or 'girl'.")
-    if not has_avatar and not (data.get("character_visual") or "").strip():
+    character_visual = (data.get("character_visual") or "").strip()
+    if not has_avatar and not character_visual:
         errors.append("character_visual is required and must be non-empty.")
 
     total_words = sum(len((sc.get("text") or "").split()) for sc in scenes if isinstance(sc, dict))
     if total_words > 170:
         errors.append(f"Total story is {total_words} words; keep it to ~150 or fewer.")
+
+    # N1: PRONOUN LOCK — scene text must use pronouns matching protagonist_gender.
+    if gender in ("boy", "girl"):
+        import re as _re
+        wrong_pronouns = (
+            {"she", "her", "hers", "herself"} if gender == "boy"
+            else {"he", "him", "his", "himself"}
+        )
+        for i, sc in enumerate(scenes, 1):
+            if not isinstance(sc, dict): continue
+            words = _re.findall(r"\b\w+\b", (sc.get("text") or "").lower())
+            hits = [w for w in words if w in wrong_pronouns]
+            if hits:
+                errors.append(
+                    f"Scene {i} uses {gender}-incompatible pronouns {sorted(set(hits))} — "
+                    f"protagonist_gender={gender}, use {'he/him/his' if gender=='boy' else 'she/her/hers'}."
+                )
+                break  # one is enough to trigger the repair retry
+
+    # N1 cont: OUTFIT LOCK — flag clothing words in scene text that contradict
+    # character_visual's clothing category.
+    if character_visual:
+        cv = character_visual.lower()
+        masculine = {"t-shirt", "tshirt", "shirt", "shorts", "trousers", "jeans", "pants", "kurta", "polo"}
+        feminine  = {"lehenga", "frock", "dress", "skirt", "kameez", "shalwar", "saree", "kurti", "gown"}
+        cv_has_m = any(w in cv for w in masculine)
+        cv_has_f = any(w in cv for w in feminine)
+        if cv_has_m and not cv_has_f:
+            forbidden = feminine
+        elif cv_has_f and not cv_has_m:
+            forbidden = masculine
+        else:
+            forbidden = set()
+        if forbidden:
+            for i, sc in enumerate(scenes, 1):
+                if not isinstance(sc, dict): continue
+                t = (sc.get("text") or "").lower()
+                hits = [w for w in forbidden if w in t]
+                if hits:
+                    errors.append(
+                        f"Scene {i} introduces clothing {hits} that conflicts with character_visual "
+                        f"(use only the outfit from character_visual)."
+                    )
+                    break
     return errors
 
 
@@ -1147,6 +1193,17 @@ def _generate_story_with_llm(
         f"Be concrete and culturally specific to {child_name}'s likely background. "
         f"Example: \"8-year-old Pakistani girl, warm olive skin, long dark hair in two braids, big round brown eyes, bright pink shalwar kameez with gold embroidery, small red earrings\". "
         f"This string is injected verbatim into every image prompt — NEVER change it between scenes.\n"
+        "  - PRONOUN LOCK: Once protagonist_gender is set, ALL pronouns for "
+        f"{child_name} across every scene MUST match: "
+        "boy → he/him/his; girl → she/her/hers. NEVER mix (no 'her' if gender is 'boy').\n"
+        "  - OUTFIT LOCK: Clothing words in scene `text` MUST match `character_visual`. "
+        "If character_visual says t-shirt/shorts/jeans, do NOT introduce lehenga/frock/shalwar/kameez/kurta/skirt/dress in any scene (and vice versa). "
+        "Treat character_visual as the protagonist's locked outfit for the whole story.\n"
+        f"  - AGE-ACTION PLAUSIBILITY: Every action must be physically and developmentally plausible for a {child_age}-year-old. "
+        "Toddlers/very young (3-5): pick flowers, hug a pet, draw, hide-and-seek — NO hammering wood, fixing shelters, driving, climbing tall trees alone. "
+        "Children (6-9): everyday school/home/yard activities. Match the action's complexity to the age.\n"
+        "  - PROPS SETUP: Any prop or object that appears in a scene must be (a) introduced or visible in a prior scene, OR (b) plausibly present in the scene's setting. "
+        "Do not magic in items (mango, key, wallet) with no setup or environmental source.\n"
         "  - tts_prompt: For EACH scene, a list of spoken lines for text-to-speech. Rules:\n"
         "    ALWAYS start with narrator line that speaks the scene text. Add 1-2 character dialogue lines if characters speak.\n"
         "    Each text MUST be under 15 words. No punctuation in text field — plain spoken words only.\n"
