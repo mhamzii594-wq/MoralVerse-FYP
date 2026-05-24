@@ -1155,7 +1155,7 @@ def _generate_story_with_llm(
         "Return ONLY valid JSON, no extra text.\n"
         "JSON structure:\n"
         "  {\"title\": string, \"avatar_used\": bool, \"protagonist_gender\": \"boy\" or \"girl\", \"character_visual\": string, "
-        "\"supporting_characters\": [{\"name\": string, \"visual\": string}], \"scenes\": [\n"
+        "\"supporting_characters\": [{\"name\": string, \"visual\": string}], \"moral\": string, \"scenes\": [\n"
         "    {\"id\": int, \"text\": string, \"image_prompt\": \"\", \"decision\": null or {\"A\": string, \"B\": string},\n"
         "     \"tts_prompt\": [{\"role\": string, \"text\": string}]}\n"
         "  ]}\n"
@@ -1184,6 +1184,9 @@ def _generate_story_with_llm(
         f"  - {child_name} is the subject of every scene. Use their name in the first sentence, then pronouns "
         "within the same scene to avoid robotic repetition.\n"
         f"  - title: ≤6 words, evocative, and include {child_name}'s name (e.g. \"{child_name}'s Brave Morning\").\n"
+        f"  - moral: REQUIRED, one short sentence (≤14 words) stating the lesson learned, "
+        f"written for a child to read aloud. It is shown on a card at the end of the video. "
+        f"Example: \"Kindness always finds its way back to you.\"\n"
         "  - Scene 1 must show the character actively doing something specific from the very first sentence — never open with 'Once upon a time there was...' alone.\n"
         "  - Every scene must be in a DIFFERENT location or show a clear visual change from the previous scene — no two consecutive scenes in identical settings.\n"
         f"  - protagonist_gender: REQUIRED. Must be \"boy\" or \"girl\" and MUST match the pronouns you use for {child_name} in the story (if you write \"she/her\", it is \"girl\").\n"
@@ -1222,6 +1225,7 @@ def _generate_story_with_llm(
         '  "title": "Ali\'s Honest Choice", "avatar_used": false, "protagonist_gender": "boy",\n'
         '  "character_visual": "7-year-old Pakistani boy, light brown skin, short black hair, big brown eyes, blue kurta and white shalwar, brown sandals",\n'
         '  "supporting_characters": [{"name": "the shopkeeper", "visual": "a stout middle-aged man with a grey beard, white cap and brown apron"}],\n'
+        '  "moral": "Honesty makes us proud and helps others too.",\n'
         '  "scenes": [\n'
         '    {"id": 1, "text": "Ali walked to the busy market, clutching a few coins to buy fruit for his mother.", "image_prompt": "", "decision": null, "tts_prompt": [{"role": "narrator", "text": "Ali walked to the busy market clutching his coins"}]},\n'
         '    {"id": 3, "text": "Ali saw a dropped wallet on the ground. He picked it up and looked around.", "image_prompt": "", "decision": {"A": "Keep the wallet and buy sweets for himself", "B": "Take the wallet to the shopkeeper to find its owner"}, "tts_prompt": [{"role": "narrator", "text": "Ali found a wallet lying on the ground"}, {"role": "boy_hero", "text": "Who could have dropped this"}]}\n'

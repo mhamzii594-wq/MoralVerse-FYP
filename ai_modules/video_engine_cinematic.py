@@ -30,6 +30,8 @@ def assemble_cinematic(
     lipsync_clip_paths: Optional[List[Optional[str]]] = None,
     subtitles_srt: Optional[str] = None,
     progress_callback=None,
+    story_title: Optional[str] = None,
+    moral: Optional[str] = None,
 ) -> str:
     """
     Assemble a cinematic video from AI-generated per-scene video clips.
@@ -51,7 +53,7 @@ def assemble_cinematic(
     """
     try:
         from moviepy.video.io.VideoFileClip import VideoFileClip
-        from moviepy.video.VideoClip import ImageClip
+        from moviepy.video.VideoClip import ImageClip, ColorClip, TextClip
         from moviepy.audio.io.AudioFileClip import AudioFileClip
         from moviepy.audio.AudioClip import CompositeAudioClip
         from moviepy import concatenate_videoclips, concatenate_audioclips, CompositeVideoClip
@@ -207,6 +209,49 @@ def assemble_cinematic(
             final_video = burn_subtitles(final_video, srt_path, 1280)
         except Exception as exc:
             logger.warning("[cinematic] subtitle burn failed: %s", exc)
+
+    # --- Title card (start) + Moral card (end) so the video reads like a real short ---
+    def _build_text_card(title_text, subtitle_text, duration, size=(1280, 720)):
+        # Warm Pixar-purple gradient-ish background (single colour for safety)
+        bg = ColorClip(size=size, color=(25, 16, 52), duration=duration)
+        parts = [bg]
+        try:
+            title_clip = TextClip(
+                text=str(title_text or "")[:80],
+                font_size=72, color="white", method="caption",
+                size=(size[0] - 160, None), text_align="center",
+            ).with_duration(duration).with_position(("center", size[1] // 3))
+            parts.append(title_clip)
+        except Exception as _e:
+            logger.warning("[cinematic] title TextClip failed: %s", _e)
+        if subtitle_text:
+            try:
+                sub_clip = TextClip(
+                    text=str(subtitle_text)[:120],
+                    font_size=34, color=(220, 220, 220), method="caption",
+                    size=(size[0] - 200, None), text_align="center",
+                ).with_duration(duration).with_position(("center", int(size[1] * 0.62)))
+                parts.append(sub_clip)
+            except Exception as _e:
+                logger.warning("[cinematic] subtitle TextClip failed: %s", _e)
+        return CompositeVideoClip(parts, size=size).with_duration(duration)
+
+    try:
+        card_parts = []
+        if story_title:
+            t_card = _build_text_card(story_title, "A MoralVerse Story", duration=2.5)
+            t_card = t_card.with_effects([vfx.CrossFadeIn(0.4), vfx.CrossFadeOut(0.4)])
+            card_parts.append(t_card)
+        card_parts.append(final_video)
+        if moral:
+            m_card = _build_text_card(moral, "— The End —", duration=3.0)
+            m_card = m_card.with_effects([vfx.CrossFadeIn(0.4), vfx.CrossFadeOut(0.4)])
+            card_parts.append(m_card)
+        if len(card_parts) > 1:
+            final_video = concatenate_videoclips(card_parts, method="compose", padding=-0.4)
+            logger.info("[cinematic] cards added: title=%s moral=%s", bool(story_title), bool(moral))
+    except Exception as exc:
+        logger.warning("[cinematic] card overlay failed: %s — proceeding without cards", exc)
 
     # --- Write output ---
     logger.info("[cinematic] writing output: %s", full_output)

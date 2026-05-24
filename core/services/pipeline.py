@@ -535,6 +535,7 @@ def generate_story_video_cinematic(user_input_id: int) -> str:
         def _assemble_progress(pct: int):
             _set_progress(80 + int(pct * 0.20))
 
+        _sj = story_request.story_json or {}
         assemble_cinematic(
             story_id=user_input_id,
             scene_images=scene_images,
@@ -545,6 +546,8 @@ def generate_story_video_cinematic(user_input_id: int) -> str:
             lipsync_clip_paths=lipsync_paths,
             subtitles_srt=subtitle_path,
             progress_callback=_assemble_progress,
+            story_title=(_sj.get("title") or story_request.title or "").strip() or None,
+            moral=(_sj.get("moral") or "").strip() or None,
         )
 
         story_request.video_path = video_path
