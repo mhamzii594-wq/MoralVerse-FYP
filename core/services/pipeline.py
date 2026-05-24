@@ -186,6 +186,26 @@ def generate_story_video(user_input_id: int) -> str:
                     seed=_seed, character_anchor=_anchor,
                     reference_image_b64=(_ref_b64 if idx != 0 else None),
                 )
+                # Soft quality gate — log a warning if a scene image looks broken
+                # (corrupt / too small / mostly flat colour). Does not block the pipeline.
+                try:
+                    full = Path(settings.MEDIA_ROOT) / path
+                    if full.exists():
+                        size_kb = full.stat().st_size / 1024
+                        if size_kb < 50:
+                            logger.warning("Scene %s image suspiciously small (%.1f KB): %s", sd.get('id'), size_kb, path)
+                        else:
+                            from PIL import Image, ImageStat
+                            with Image.open(full) as _im:
+                                _w, _h = _im.size
+                                _ar = _w / _h if _h else 0
+                                if not (1.6 <= _ar <= 2.0):
+                                    logger.warning("Scene %s image not ~16:9 (%dx%d, ar=%.2f): %s", sd.get('id'), _w, _h, _ar, path)
+                                _st = ImageStat.Stat(_im.convert("RGB"))
+                                if max(_st.stddev) < 8:
+                                    logger.warning("Scene %s image looks flat (low variance): %s", sd.get('id'), path)
+                except Exception as _qe:
+                    logger.debug("image quality gate check failed (non-fatal): %s", _qe)
                 # Save immediately so a preview-page refresh sees this scene as done.
                 StoryScene.objects.filter(pk=sc.pk).update(image_path=path)
                 return idx, path, sd.get('id')

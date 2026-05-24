@@ -108,14 +108,16 @@ def burn_subtitles(video_clip, srt_path: Path, video_width: int):
         return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
 
     def _make_textclip(txt: str):
+        # Larger size (was 24) so subtitles are comfortably readable on the 1280x720
+        # final video; thicker stroke for legibility over any background.
         kwargs = dict(
             text=txt,
-            font_size=24,
+            font_size=36,
             color='white',
             stroke_color='black',
-            stroke_width=2,
+            stroke_width=3,
             method='caption',
-            size=(video_width - 100, None),
+            size=(video_width - 120, None),
             text_align='center',
         )
         if subtitle_font:
