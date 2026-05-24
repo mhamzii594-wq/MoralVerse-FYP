@@ -2,11 +2,12 @@
 Image-to-video clip generation for the cinematic pipeline.
 
 Provider priority:
-  1. Wan 2.1 on Modal.com  (MODAL_WAN_ENDPOINT)  — best open-source quality, 480p, 16fps
-  2. LTX-Video 2.3 on Modal.com (MODAL_LTX_ENDPOINT) — fast fallback
-  3. ModelsLab Kling v2.1 i2v  — best commercial, 1080p, prompt-guided
-  4. ModelsLab basic img2video  — cheap fallback
-  5. Stability AI SVD           — last resort
+  1. Wan 2.2 on Modal.com  (MODAL_WAN22_ENDPOINT) — SOTA open i2v, 720p MoE, 24fps
+  2. Wan 2.1 on Modal.com  (MODAL_WAN_ENDPOINT)   — 480p fallback, 16fps
+  3. LTX-Video 2.3 on Modal.com (MODAL_LTX_ENDPOINT) — fast fallback
+  4. ModelsLab Kling v2.1 i2v   — commercial, prompt-guided
+  5. ModelsLab basic img2video  — cheap fallback
+  6. Stability AI SVD           — last resort
 
 Returns a local .mp4 path on success, raises on failure.
 """
@@ -49,6 +50,10 @@ def _modal_wan_endpoint() -> str:
     return os.getenv("MODAL_WAN_ENDPOINT", "").strip()
 
 
+def _modal_wan22_endpoint() -> str:
+    return os.getenv("MODAL_WAN22_ENDPOINT", "").strip()
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -88,7 +93,14 @@ def generate_clip(
     # Clip length follows the scene's narration so video and audio finish together.
     effective_duration = audio_duration if audio_duration else duration
 
-    # 1. Wan 2.1 on Modal (best open-source quality)
+    # 1. Wan 2.2 on Modal (SOTA open i2v — MoE, 720p)
+    if _modal_wan22_endpoint():
+        try:
+            return _wan22_modal(image_path, output_path, prompt, duration=effective_duration)
+        except Exception as exc:
+            logger.error("Wan 2.2 Modal failed: %s — trying Wan 2.1", exc)
+
+    # 2. Wan 2.1 on Modal (fallback)
     if _modal_wan_endpoint():
         try:
             return _wan_modal(image_path, output_path, prompt, duration=effective_duration)
@@ -131,7 +143,65 @@ def generate_clip(
 
 
 # ---------------------------------------------------------------------------
-# Wan 2.1 on Modal.com (primary provider)
+# Wan 2.2 on Modal.com (primary — SOTA open i2v, MoE, 720p)
+# ---------------------------------------------------------------------------
+
+def _wan22_modal(image_path: str, output_path: str, prompt: str, duration: float = 5.0) -> str:
+    """Generate a clip via Wan 2.2 (A14B MoE) running on Modal.com (A100-80GB)."""
+    import base64, random, math
+    endpoint = _modal_wan22_endpoint()
+    if not endpoint:
+        raise RuntimeError("MODAL_WAN22_ENDPOINT not set")
+
+    with open(image_path, "rb") as f:
+        image_b64 = base64.b64encode(f.read()).decode()
+
+    # Wan runs at 24fps and requires (num_frames - 1) % 4 == 0. Round UP so the clip
+    # always covers the narration. Clamp 49..193 frames (~2-8s) for motion coherence.
+    fps = 24
+    raw = max(49, min(193, int(math.ceil(duration * fps))))
+    num_frames = math.ceil((raw - 1) / 4) * 4 + 1
+    num_frames = min(193, num_frames)
+
+    logger.info(
+        "img2video [Wan 2.2 Modal]: %d frames (%.1fs @ %dfps) posting to %s",
+        num_frames, duration, fps, endpoint,
+    )
+    resp = requests.post(
+        endpoint,
+        json={
+            "image": image_b64,
+            "prompt": prompt[:500],
+            "negative_prompt": (
+                "flat 2D, anime, cel-shaded, hand-drawn, sketch, low resolution, "
+                "warped face, melting face, extra limbs, extra fingers, morphing, "
+                "ghosting, smearing, double subject, duplicate, jittery, distorted, "
+                "blurry, worst quality, inconsistent motion"
+            ),
+            "num_frames": num_frames,
+            "fps": fps,
+            "height": 720,
+            "width": 1280,
+            "num_inference_steps": 35,
+            "guidance_scale": 5.0,
+            "seed": random.randint(0, 2**32 - 1),
+        },
+        timeout=1500,  # 35 steps x ~30-45s + cold-start headroom
+    )
+    resp.raise_for_status()
+    data = resp.json()
+
+    video_bytes = base64.b64decode(data["video"])
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, "wb") as f:
+        f.write(video_bytes)
+    size_mb = len(video_bytes) / 1e6
+    logger.info("Wan 2.2 Modal clip saved: %s (%.1f MB)", output_path, size_mb)
+    return output_path
+
+
+# ---------------------------------------------------------------------------
+# Wan 2.1 on Modal.com (fallback)
 # ---------------------------------------------------------------------------
 
 def _wan_modal(image_path: str, output_path: str, prompt: str, duration: float = 5.0) -> str:
